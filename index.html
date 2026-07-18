@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PWA Forge — turn any site into an installable app</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --char:#14110F;
+    --char2:#1D1815;
+    --ember:#E8532A;
+    --ember2:#FF7A47;
+    --steel:#8B95A1;
+    --paper:#EDE8E1;
+    --line: rgba(237,232,225,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--char);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:32px 18px 60px;
+  }
+  .wrap{width:100%;max-width:560px;}
+  header{margin-bottom:34px;}
+  .mark{
+    display:inline-flex;align-items:center;gap:10px;
+    font-family:'Oswald',sans-serif;
+    font-weight:700;font-size:13px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ember2);
+    margin-bottom:14px;
+  }
+  .mark svg{width:16px;height:16px;}
+  h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size:clamp(28px,7vw,38px);
+    line-height:1.08;
+    margin:0 0 10px;
+    letter-spacing:-.01em;
+  }
+  h1 em{color:var(--ember2);font-style:normal;}
+  p.sub{
+    color:var(--steel);font-size:15px;line-height:1.55;margin:0;max-width:46ch;
+  }
+  .step{
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:22px 20px;
+    margin-bottom:14px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  }
+  .step-head{
+    display:flex;align-items:center;gap:10px;margin-bottom:16px;
+  }
+  .step-num{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;color:var(--ember2);
+    border:1px solid rgba(232,83,42,0.4);
+    width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .step-title{
+    font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;
+    letter-spacing:.02em;text-transform:uppercase;
+  }
+  input[type=url], input[type=text]{
+    width:100%;background:var(--char2);
+    border:1px solid var(--line);
+    color:var(--paper);
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    padding:13px 14px;border-radius:2px;
+    outline:none;
+    transition:border-color .15s;
+  }
+  input[type=url]:focus, input[type=text]:focus{border-color:var(--ember);}
+  input::placeholder{color:#5c5650;}
+
+  .toggle{display:flex;gap:8px;margin-bottom:14px;}
+  .toggle button{
+    flex:1;background:transparent;border:1px solid var(--line);color:var(--steel);
+    font-family:'Inter',sans-serif;font-weight:500;font-size:13px;
+    padding:10px;border-radius:2px;cursor:pointer;transition:all .15s;
+  }
+  .toggle button.active{border-color:var(--ember);color:var(--paper);background:rgba(232,83,42,0.09);}
+
+  .icon-pane{display:none;}
+  .icon-pane.active{display:block;}
+
+  .drop{
+    border:1px dashed var(--line);border-radius:2px;
+    padding:20px;text-align:center;cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag{border-color:var(--ember);background:rgba(232,83,42,0.05);}
+  .drop input{display:none;}
+  .drop-txt{color:var(--steel);font-size:13px;}
+  .drop-txt strong{color:var(--paper);}
+
+  #preview-row{display:none;align-items:center;gap:12px;margin-top:12px;}
+  #preview-row.show{display:flex;}
+  #preview-canvas{
+    width:56px;height:56px;border-radius:8px;border:1px solid var(--line);
+    image-rendering:pixelated;
+  }
+  #preview-name{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--steel);}
+
+  .forge-btn{
+    width:100%;background:var(--ember);color:var(--char);
+    font-family:'Oswald',sans-serif;font-weight:600;font-size:16px;
+    letter-spacing:.03em;text-transform:uppercase;
+    border:none;border-radius:2px;padding:16px;cursor:pointer;
+    margin-top:18px;
+    transition:transform .08s ease, background .15s;
+  }
+  .forge-btn:hover{background:var(--ember2);}
+  .forge-btn:active{transform:scale(0.985);}
+  .forge-btn:disabled{background:#4a3b34;color:#8a7b73;cursor:not-allowed;}
+
+  #status{
+    margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;
+    color:var(--steel);line-height:1.9;min-height:0;
+  }
+  #status .ok{color:#7FBF95;}
+  #status .now{color:var(--ember2);}
+
+  #result{display:none;margin-top:18px;border:1px solid var(--line);padding:20px;border-radius:2px;background:rgba(127,191,149,0.05);}
+  #result.show{display:block;}
+  #result h3{font-family:'Oswald',sans-serif;margin:0 0 6px;font-size:16px;color:#7FBF95;letter-spacing:.02em;}
+  #result p{color:var(--steel);font-size:13px;margin:0 0 14px;line-height:1.6;}
+  .dl-btn{
+    display:inline-block;background:transparent;border:1px solid #7FBF95;color:#7FBF95;
+    font-family:'JetBrains Mono',monospace;font-size:13px;padding:12px 18px;
+    border-radius:2px;text-decoration:none;cursor:pointer;
+  }
+  .dl-btn:hover{background:rgba(127,191,149,0.1);}
+
+  .err{color:#E8532A;font-size:13px;margin-top:8px;display:none;}
+  .err.show{display:block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
+      PWA Forge
+    </div>
+    <h1>Site link in. <em>Installable app</em> out.</h1>
+    <p class="sub">Give it a URL and an icon. It forges the manifest, service worker, and every icon size — then hands you a zip ready to deploy.</p>
+  </header>
+
+  <div class="step">
+    <div class="step-head"><span class="step-num">1</span><span class="step-title">Site link</span></div>
+    <input type="url" id="siteUrl" placeholder="https://yoursite.com" autocomplete="off">
+    <div class="err" id="urlErr">Enter a valid URL, starting with https://</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-num">2</span><span class="step-title">Icon</span></div>
+    <div class="toggle">
+      <button type="button" id="tabUpload" class="active">Upload icon</button>
+      <button type="button" id="tabDescribe">Describe icon</button>
+    </div>
+
+    <div class="icon-pane active" id="paneUpload">
+      <label class="drop" id="dropZone">
+        <input type="file" id="fileInput" accept="image/*">
+        <div class="drop-txt"><strong>Tap to upload</strong> or drop an image<br>PNG or JPG, square works best</div>
+      </label>
+    </div>
+
+    <div class="icon-pane" id="paneDescribe">
+      <input type="text" id="iconDesc" placeholder="e.g. a black logo with a white play button">
+    </div>
+
+    <div id="preview-row"><canvas id="preview-canvas" width="64" height="64"></canvas><span id="preview-name"></span></div>
+  </div>
+
+  <button class="forge-btn" id="forgeBtn">Forge PWA</button>
+  <div id="status"></div>
+
+  <div id="result">
+    <h3>Your PWA is ready</h3>
+    <p id="resultDetail"></p>
+    <a class="dl-btn" id="downloadLink" download="pwa.zip">Download zip</a>
+  </div>
+</div>
+
+<script>
+// ---------- state ----------
+let iconMode = 'upload';
+let uploadedImg = null;      // HTMLImageElement
+let generatedIconSpec = null; // {shape, bg, fg}
+
+// ---------- tabs ----------
+const tabUpload = document.getElementById('tabUpload');
+const tabDescribe = document.getElementById('tabDescribe');
+const paneUpload = document.getElementById('paneUpload');
+const paneDescribe = document.getElementById('paneDescribe');
+
+tabUpload.onclick = () => setMode('upload');
+tabDescribe.onclick = () => setMode('describe');
+function setMode(m){
+  iconMode = m;
+  tabUpload.classList.toggle('active', m==='upload');
+  tabDescribe.classList.toggle('active', m==='describe');
+  paneUpload.classList.toggle('active', m==='upload');
+  paneDescribe.classList.toggle('active', m==='describe');
+  updatePreview();
+}
+
+// ---------- file upload ----------
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+fileInput.onchange = e => { if(e.target.files[0]) loadImageFile(e.target.files[0]); };
+['dragover','dragenter'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag'); }));
+dropZone.addEventListener('drop', e => { if(e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]); });
+
+function loadImageFile(file){
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => { uploadedImg = img; updatePreview(); };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+document.getElementById('iconDesc').addEventListener('input', updatePreview);
+
+// ---------- shape library (simple recognizable glyphs drawn on canvas) ----------
+const COLOR_WORDS = {
+  black:'#0B0B0B', white:'#FFFFFF', red:'#E23B3B', blue:'#2E6BE6', green:'#2FA84F',
+  yellow:'#F0C419', purple:'#8B4FE0', orange:'#E8752C', pink:'#E85C9C', gray:'#8A8F98',
+  grey:'#8A8F98', teal:'#1FA9A0', navy:'#1B2A4A', gold:'#D4A93C', silver:'#C6C9CC',
+  brown:'#7A5230', cyan:'#2CC1D6', lime:'#8AD62B', maroon:'#7A1F2B', indigo:'#4B3FB0'
+};
+const SHAPE_KEYWORDS = [
+  [['play','playbutton','play button','triangle'],'play'],
+  [['pause'],'pause'],
+  [['star'],'star'],
+  [['heart','love'],'heart'],
+  [['house','home'],'house'],
+  [['mail','envelope','email'],'mail'],
+  [['chat','message','bubble','talk'],'chat'],
+  [['cart','shop','shopping','store'],'cart'],
+  [['gear','settings','cog'],'gear'],
+  [['music','note','sound'],'music'],
+  [['camera','photo'],'camera'],
+  [['book','read'],'book'],
+  [['phone','call'],'phone'],
+  [['bolt','lightning','flash','fast'],'bolt'],
+  [['check','checkmark','done','tick'],'check'],
+  [['circle','dot','round'],'circle'],
+  [['square','box'],'square']
+];
+
+function parseDescription(desc){
+  const d = (desc||'').toLowerCase();
+  const foundColors = [];
+  for(const w in COLOR_WORDS){ if(d.includes(w) && !foundColors.includes(COLOR_WORDS[w])) foundColors.push(COLOR_WORDS[w]); }
+  let bg = foundColors[0] || '#0B0B0B';
+  let fg = foundColors[1] || (bg === '#FFFFFF' ? '#0B0B0B' : '#FFFFFF');
+  let shape = 'circle';
+  for(const [keys, s] of SHAPE_KEYWORDS){ if(keys.some(k => d.includes(k))){ shape = s; break; } }
+  if(!d.trim()){ shape = 'letter'; }
+  return {shape, bg, fg, raw: desc||''};
+}
+
+function drawShape(ctx, shape, cx, cy, r, color){
+  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = r*0.16;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  switch(shape){
+    case 'play':
+      ctx.beginPath();
+      ctx.moveTo(cx - r*0.55, cy - r*0.75);
+      ctx.lineTo(cx - r*0.55, cy + r*0.75);
+      ctx.lineTo(cx + r*0.85, cy);
+      ctx.closePath(); ctx.fill();
+      break;
+    case 'pause':
+      ctx.fillRect(cx - r*0.6, cy - r*0.7, r*0.4, r*1.4);
+      ctx.fillRect(cx + r*0.2, cy - r*0.7, r*0.4, r*1.4);
+      break;
+    case 'star': {
+      ctx.beginPath();
+      for(let i=0;i<10;i++){
+        const ang = (Math.PI/5)*i - Math.PI/2;
+        const rad = i%2===0 ? r : r*0.42;
+        const x = cx + rad*Math.cos(ang), y = cy + rad*Math.sin(ang);
+        i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      }
+      ctx.closePath(); ctx.fill();
+      break;
+    }
+    case 'heart':
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r*0.75);
+      ctx.bezierCurveTo(cx - r*1.3, cy - r*0.35, cx - r*0.5, cy - r*1.25, cx, cy - r*0.35);
+      ctx.bezierCurveTo(cx + r*0.5, cy - r*1.25, cx + r*1.3, cy - r*0.35, cx, cy + r*0.75);
+      ctx.closePath(); ctx.fill();
+      break;
+    case 'house':
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r*0.95, cy - r*0.05);
+      ctx.lineTo(cx + r*0.62, cy - r*0.05); ctx.lineTo(cx + r*0.62, cy + r*0.85);
+      ctx.lineTo(cx - r*0.62, cy + r*0.85); ctx.lineTo(cx - r*0.62, cy - r*0.05);
+      ctx.lineTo(cx - r*0.95, cy - r*0.05); ctx.closePath(); ctx.fill();
+      break;
+    case 'mail':
+      ctx.strokeRect(cx - r, cy - r*0.65, r*2, r*1.3);
+      ctx.beginPath(); ctx.moveTo(cx - r, cy - r*0.6); ctx.lineTo(cx, cy + r*0.1); ctx.lineTo(cx + r, cy - r*0.6); ctx.stroke();
+      break;
+    case 'chat':
+      ctx.beginPath();
+      ctx.moveTo(cx - r, cy - r*0.7); ctx.lineTo(cx + r, cy - r*0.7);
+      ctx.quadraticCurveTo(cx + r*1.15, cy - r*0.7, cx + r*1.15, cy - r*0.4);
+      ctx.lineTo(cx + r*1.15, cy + r*0.25);
+      ctx.quadraticCurveTo(cx + r*1.15, cy + r*0.55, cx + r*0.85, cy + r*0.55);
+      ctx.lineTo(cx - r*0.5, cy + r*0.55); ctx.lineTo(cx - r*0.85, cy + r*1.05); ctx.lineTo(cx - r*0.75, cy + r*0.55);
+      ctx.lineTo(cx - r, cy + r*0.55);
+      ctx.quadraticCurveTo(cx - r*1.15, cy + r*0.55, cx - r*1.15, cy + r*0.25);
+      ctx.lineTo(cx - r*1.15, cy - r*0.4);
+      ctx.quadraticCurveTo(cx - r*1.15, cy - r*0.7, cx - r, cy - r*0.7);
+      ctx.fill();
+      break;
+    case 'cart':
+      ctx.beginPath();
+      ctx.moveTo(cx - r*1.1, cy - r*0.75); ctx.lineTo(cx - r*0.75, cy - r*0.75);
+      ctx.lineTo(cx - r*0.35, cy + r*0.35); ctx.lineTo(cx + r*0.85, cy + r*0.35);
+      ctx.lineTo(cx + r*1.15, cy - r*0.35); ctx.lineTo(cx - r*0.55, cy - r*0.35);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx - r*0.15, cy + r*0.85, r*0.15, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + r*0.65, cy + r*0.85, r*0.15, 0, Math.PI*2); ctx.fill();
+      break;
+    case 'gear':
+      for(let i=0;i<8;i++){
+        const ang = (Math.PI/4)*i;
+        ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang);
+        ctx.fillRect(-r*0.14, -r*1.15, r*0.28, r*0.35);
+        ctx.restore();
+      }
+      ctx.beginPath(); ctx.arc(cx, cy, r*0.68, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = shape==='gear' ? (color==='#FFFFFF'?'#0B0B0B':'#FFFFFF') : color;
+      break;
+    case 'music':
+      ctx.beginPath(); ctx.arc(cx - r*0.45, cy + r*0.65, r*0.32, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + r*0.5, cy + r*0.45, r*0.32, 0, Math.PI*2); ctx.fill();
+      ctx.fillRect(cx - r*0.16, cy - r*0.95, r*0.1, r*1.55);
+      ctx.fillRect(cx + r*0.78, cy - r*1.15, r*0.1, r*1.55);
+      ctx.beginPath(); ctx.moveTo(cx - r*0.16, cy - r*0.95); ctx.lineTo(cx + r*0.88, cy - r*1.15);
+      ctx.lineTo(cx + r*0.88, cy - r*0.65); ctx.lineTo(cx - r*0.16, cy - r*0.45); ctx.closePath(); ctx.fill();
+      break;
+    case 'camera':
+      ctx.strokeRect(cx - r, cy - r*0.55, r*2, r*1.3);
+      ctx.fillRect(cx - r*0.35, cy - r*0.95, r*0.7, r*0.4);
+      ctx.beginPath(); ctx.arc(cx, cy + r*0.1, r*0.45, 0, Math.PI*2); ctx.stroke();
+      break;
+    case 'book':
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r*0.75);
+      ctx.bezierCurveTo(cx - r*0.4, cy - r*1.0, cx - r*1.1, cy - r*0.95, cx - r*1.1, cy - r*0.65);
+      ctx.lineTo(cx - r*1.1, cy + r*0.85);
+      ctx.bezierCurveTo(cx - r*0.4, cy + r*0.6, cx, cy + r*0.85, cx, cy + r*0.85);
+      ctx.bezierCurveTo(cx, cy + r*0.85, cx + r*0.4, cy + r*0.6, cx + r*1.1, cy + r*0.85);
+      ctx.lineTo(cx + r*1.1, cy - r*0.65);
+      ctx.bezierCurveTo(cx + r*1.1, cy - r*0.95, cx + r*0.4, cy - r*1.0, cx, cy - r*0.75);
+      ctx.closePath(); ctx.fill();
+      break;
+    case 'phone':
+      ctx.beginPath();
+      ctx.moveTo(cx - r*0.9, cy - r*0.6);
+      ctx.bezierCurveTo(cx - r*0.9, cy - r*1.0, cx - r*0.3, cy - r*0.55, cx - r*0.05, cy - r*0.3);
+      ctx.bezierCurveTo(cx + r*0.15, cy - r*0.1, cx - r*0.05, cy + r*0.05, cx - r*0.2, cy + r*0.2);
+      ctx.bezierCurveTo(cx + r*0.05, cy + r*0.7, cx + r*0.4, cy + r*0.95, cx + r*0.9, cy + r*1.1);
+      ctx.bezierCurveTo(cx + r*1.05, cy + r*0.85, cx + r*0.6, cy + r*0.65, cx + r*0.4, cy + r*0.85);
+      ctx.bezierCurveTo(cx + r*0.1, cy + r*0.5, cx - r*0.1, cy + r*0.1, cx + r*0.05, cy - r*0.15);
+      ctx.bezierCurveTo(cx + r*0.3, cy - r*0.35, cx - r*0.55, cy - r*0.95, cx - r*0.9, cy - r*0.6);
+      ctx.closePath(); ctx.fill();
+      break;
+    case 'bolt':
+      ctx.beginPath();
+      ctx.moveTo(cx + r*0.25, cy - r*1.05); ctx.lineTo(cx - r*0.65, cy + r*0.15);
+      ctx.lineTo(cx - r*0.05, cy + r*0.15); ctx.lineTo(cx - r*0.25, cy + r*1.05);
+      ctx.lineTo(cx + r*0.65, cy - r*0.25); ctx.lineTo(cx + r*0.05, cy - r*0.25);
+      ctx.closePath(); ctx.fill();
+      break;
+    case 'check':
+      ctx.lineWidth = r*0.3;
+      ctx.beginPath(); ctx.moveTo(cx - r*0.75, cy + r*0.05); ctx.lineTo(cx - r*0.15, cy + r*0.65); ctx.lineTo(cx + r*0.85, cy - r*0.65); ctx.stroke();
+      break;
+    case 'square':
+      ctx.fillRect(cx - r*0.75, cy - r*0.75, r*1.5, r*1.5);
+      break;
+    case 'letter': {
+      const letter = (document.getElementById('siteUrl').value || 'A').replace(/^https?:\/\//,'').replace(/^www\./,'').trim()[0] || 'A';
+      ctx.font = `${r*1.5}px Oswald, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(letter.toUpperCase(), cx, cy + r*0.08);
+      break;
+    }
+    case 'circle':
+    default:
+      ctx.beginPath(); ctx.arc(cx, cy, r*0.8, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function renderIconToCanvas(canvas, spec, size){
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,size,size);
+  ctx.fillStyle = spec.bg;
+  ctx.fillRect(0,0,size,size);
+  drawShape(ctx, spec.shape, size/2, size/2, size*0.32, spec.fg);
+}
+
+function renderMaskableToCanvas(canvas, spec, size){
+  // maskable icons need full-bleed bg with content inside ~80% safe zone
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = spec.bg;
+  ctx.fillRect(0,0,size,size);
+  drawShape(ctx, spec.shape, size/2, size/2, size*0.24, spec.fg);
+}
+
+// ---------- preview ----------
+function updatePreview(){
+  const row = document.getElementById('preview-row');
+  const canvas = document.getElementById('preview-canvas');
+  const nameEl = document.getElementById('preview-name');
+  if(iconMode === 'upload' && uploadedImg){
+    drawUploadedToCanvas(canvas, uploadedImg, 64);
+    nameEl.textContent = 'Using uploaded image';
+    row.classList.add('show');
+  } else if(iconMode === 'describe' && document.getElementById('iconDesc').value.trim()){
+    generatedIconSpec = parseDescription(document.getElementById('iconDesc').value);
+    renderIconToCanvas(canvas, generatedIconSpec, 64);
+    nameEl.textContent = 'Generated icon preview';
+    row.classList.add('show');
+  } else {
+    row.classList.remove('show');
+  }
+}
+
+function drawUploadedToCanvas(canvas, img, size){
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const side = Math.min(img.width, img.height);
+  const sx = (img.width - side)/2, sy = (img.height - side)/2;
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+}
+
+// ---------- app name from URL ----------
+function nameFromUrl(url){
+  try{
+    const u = new URL(url);
+    let host = u.hostname.replace(/^www\./,'');
+    let base = host.split('.')[0];
+    base = base.replace(/[-_]+/g,' ');
+    const name = base.replace(/\b\w/g, c => c.toUpperCase());
+    return {name, short: name.length > 12 ? name.split(' ')[0] : name};
+  }catch(e){ return {name:'My App', short:'App'}; }
+}
+
+// dominant color sample from an uploaded image (simple average)
+function dominantColor(img){
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 32;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, 32, 32);
+  const data = ctx.getImageData(0,0,32,32).data;
+  let r=0,g=0,b=0,n=0;
+  for(let i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; n++; }
+  r=Math.round(r/n); g=Math.round(g/n); b=Math.round(b/n);
+  return '#' + [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+// ---------- forge ----------
+const statusEl = document.getElementById('status');
+function log(msg, cls){
+  const line = document.createElement('div');
+  if(cls) line.className = cls;
+  line.textContent = msg;
+  statusEl.appendChild(line);
+}
+
+document.getElementById('forgeBtn').onclick = async () => {
+  const urlVal = document.getElementById('siteUrl').value.trim();
+  const urlErr = document.getElementById('urlErr');
+  let validUrl;
+  try{
+    validUrl = new URL(urlVal);
+    if(!['http:','https:'].includes(validUrl.protocol)) throw new Error();
+    urlErr.classList.remove('show');
+  }catch(e){
+    urlErr.classList.add('show');
+    return;
+  }
+  if(iconMode === 'upload' && !uploadedImg){
+    log('Add an icon — upload one or describe it.', ''); return;
+  }
+  if(iconMode === 'describe' && !document.getElementById('iconDesc').value.trim()){
+    log('Add an icon — upload one or describe it.', ''); return;
+  }
+
+  const btn = document.getElementById('forgeBtn');
+  btn.disabled = true;
+  statusEl.innerHTML = '';
+  document.getElementById('result').classList.remove('show');
+
+  const {name, short} = nameFromUrl(urlVal);
+  let themeColor, bgColor;
+
+  log('Reading site link…', 'now');
+  await tick();
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  log('Preparing icon…', 'now');
+  await tick();
+  const zip = new JSZip();
+  const iconsFolder = zip.folder('icons');
+  const sizes = [
+    {name:'icon-192.png', size:192, maskable:false},
+    {name:'icon-512.png', size:512, maskable:false},
+    {name:'icon-maskable-192.png', size:192, maskable:true},
+    {name:'icon-maskable-512.png', size:512, maskable:true},
+  ];
+
+  for(const s of sizes){
+    const canvas = document.createElement('canvas');
+    if(iconMode === 'upload'){
+      if(s.maskable){
+        canvas.width = s.size; canvas.height = s.size;
+        const ctx = canvas.getContext('2d');
+        // sample edge color for maskable bg fill so bleed matches the icon
+        const edgeColor = dominantColor(uploadedImg);
+        ctx.fillStyle = edgeColor; ctx.fillRect(0,0,s.size,s.size);
+        const inner = s.size * 0.7, offset = s.size*0.15;
+        const side = Math.min(uploadedImg.width, uploadedImg.height);
+        const sx = (uploadedImg.width - side)/2, sy = (uploadedImg.height - side)/2;
+        ctx.drawImage(uploadedImg, sx, sy, side, side, offset, offset, inner, inner);
+      } else {
+        drawUploadedToCanvas(canvas, uploadedImg, s.size);
+      }
+    } else {
+      const spec = generatedIconSpec || parseDescription(document.getElementById('iconDesc').value);
+      s.maskable ? renderMaskableToCanvas(canvas, spec, s.size) : renderIconToCanvas(canvas, spec, s.size);
+      themeColor = spec.bg;
+    }
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    iconsFolder.file(s.name, blob);
+  }
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  if(iconMode === 'upload'){
+    themeColor = dominantColor(uploadedImg);
+  }
+  bgColor = '#FFFFFF';
+
+  log('Writing manifest…', 'now');
+  await tick();
+  const manifest = {
+    name, short_name: short,
+    start_url: './index.html',
+    scope: './',
+    display: 'standalone',
+    background_color: bgColor,
+    theme_color: themeColor,
+    icons: [
+      {src:'icons/icon-192.png', sizes:'192x192', type:'image/png', purpose:'any'},
+      {src:'icons/icon-512.png', sizes:'512x512', type:'image/png', purpose:'any'},
+      {src:'icons/icon-maskable-192.png', sizes:'192x192', type:'image/png', purpose:'maskable'},
+      {src:'icons/icon-maskable-512.png', sizes:'512x512', type:'image/png', purpose:'maskable'}
+    ]
+  };
+  zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  log('Registering service worker…', 'now');
+  await tick();
+  const sw = `const CACHE = '${short.toLowerCase().replace(/\\s+/g,'-')}-shell-v1';
+self.addEventListener('install', e => { self.skipWaiting(); });
+self.addEventListener('activate', e => { self.clients.claim(); });
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request))
+  );
+});`;
+  zip.file('sw.js', sw);
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  log('Assembling app shell…', 'now');
+  await tick();
+  const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${escapeHtml(name)}</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="${themeColor}">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  html,body{margin:0;height:100%;background:${themeColor};display:flex;align-items:center;justify-content:center;font-family:sans-serif;}
+  img{width:72px;height:72px;border-radius:16px;}
+</style>
+</head>
+<body>
+<img src="icons/icon-192.png" alt="${escapeHtml(name)}">
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  }
+  window.location.href = ${JSON.stringify(urlVal)};
+<\/script>
+</body>
+</html>`;
+  zip.file('index.html', indexHtml);
+
+  const readme = `${name} — PWA package
+=========================
+
+This is an installable PWA shell that opens ${urlVal}
+
+Deploy (Cloudflare Pages, drag-and-drop):
+1. Go to pages.cloudflare.com > Create a project > Direct upload
+2. Drag this whole unzipped folder in
+3. Deploy — you'll get a *.pages.dev link
+4. Open that link on a phone, use "Add to Home Screen" (Android/Chrome shows an Install prompt automatically)
+
+Deploy (any static host):
+Upload index.html, manifest.json, sw.js and the icons/ folder to any static file host, keeping the folder structure intact.
+`;
+  zip.file('README.txt', readme);
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  log('Zipping package…', 'now');
+  const blob = await zip.generateAsync({type:'blob'});
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  const url = URL.createObjectURL(blob);
+  const dl = document.getElementById('downloadLink');
+  dl.href = url;
+  dl.download = short.toLowerCase().replace(/\s+/g,'-') + '-pwa.zip';
+  document.getElementById('resultDetail').textContent = `${name} · points to ${urlVal}`;
+  document.getElementById('result').classList.add('show');
+
+  btn.disabled = false;
+};
+
+function tick(){ return new Promise(r => setTimeout(r, 180)); }
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+</script>
+</body>
+</html>
