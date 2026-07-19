@@ -767,7 +767,9 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
       }
     }catch(err){
       const last = document.querySelector('#status div:last-child');
-      last.textContent = 'Live publish unavailable — zip is ready instead';
+      last.textContent = 'Publish failed: ' + err.message;
+      last.style.color = '#E8532A';
+      log('Zip is ready as a fallback below.', '');
     }
   }
 
