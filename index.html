@@ -5,24 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PWA Forge — turn any site into an installable app</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
-    --char:#14110F;
-    --char2:#1D1815;
-    --ember:#E8532A;
-    --ember2:#FF7A47;
-    --steel:#8B95A1;
-    --paper:#EDE8E1;
-    --line: rgba(237,232,225,0.12);
+    --ink:#111111;
+    --paper:#FFFFFF;
+    --line:#E5E5E5;
+    --line2:#DADADA;
+    --muted:#6B6B6B;
+    --accent:#111111;
+    --ok:#1E8E5A;
+    --err:#D2412A;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
-    background:var(--char);
-    color:var(--paper);
-    font-family:'Inter',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',-apple-system,sans-serif;
     min-height:100vh;
     display:flex;
     flex-direction:column;
@@ -32,123 +33,134 @@
   .wrap{width:100%;max-width:560px;}
   header{margin-bottom:34px;}
   .mark{
-    display:inline-flex;align-items:center;gap:10px;
-    font-family:'Oswald',sans-serif;
-    font-weight:700;font-size:13px;letter-spacing:.14em;
-    text-transform:uppercase;color:var(--ember2);
-    margin-bottom:14px;
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;
+    font-weight:400;font-size:14px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink);
+    margin-bottom:16px;
   }
   .mark svg{width:16px;height:16px;}
   h1{
-    font-family:'Oswald',sans-serif;
-    font-weight:600;
-    font-size:clamp(28px,7vw,38px);
-    line-height:1.08;
-    margin:0 0 10px;
-    letter-spacing:-.01em;
+    font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;
+    font-weight:400;
+    font-size:clamp(30px,7.5vw,42px);
+    line-height:1.05;
+    margin:0 0 12px;
+    letter-spacing:.005em;
+    text-transform:uppercase;
   }
-  h1 em{color:var(--ember2);font-style:normal;}
+  h1 em{font-style:normal;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:4px;}
   p.sub{
-    color:var(--steel);font-size:15px;line-height:1.55;margin:0;max-width:46ch;
+    color:var(--muted);font-size:15px;line-height:1.55;margin:0;max-width:46ch;
   }
   .step{
     border:1px solid var(--line);
-    border-radius:2px;
+    border-radius:0;
     padding:22px 20px;
     margin-bottom:14px;
-    background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+    background:var(--paper);
   }
   .step-head{
     display:flex;align-items:center;gap:10px;margin-bottom:16px;
   }
   .step-num{
     font-family:'JetBrains Mono',monospace;
-    font-size:12px;color:var(--ember2);
-    border:1px solid rgba(232,83,42,0.4);
+    font-size:12px;color:var(--ink);
+    border:1px solid var(--ink);
     width:22px;height:22px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     flex-shrink:0;
   }
   .step-title{
-    font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;
-    letter-spacing:.02em;text-transform:uppercase;
+    font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;
+    font-weight:400;font-size:16px;
+    letter-spacing:.03em;text-transform:uppercase;
   }
   input[type=url], input[type=text]{
-    width:100%;background:var(--char2);
-    border:1px solid var(--line);
-    color:var(--paper);
+    width:100%;background:var(--paper);
+    border:1px solid var(--line2);
+    color:var(--ink);
     font-family:'JetBrains Mono',monospace;
     font-size:14px;
-    padding:13px 14px;border-radius:2px;
+    padding:13px 14px;border-radius:0;
     outline:none;
     transition:border-color .15s;
   }
-  input[type=url]:focus, input[type=text]:focus{border-color:var(--ember);}
-  input::placeholder{color:#5c5650;}
+  input[type=url]:focus, input[type=text]:focus{border-color:var(--ink);}
+  input::placeholder{color:#B5B5B5;}
 
   .toggle{display:flex;gap:8px;margin-bottom:14px;}
   .toggle button{
-    flex:1;background:transparent;border:1px solid var(--line);color:var(--steel);
+    flex:1;background:transparent;border:1px solid var(--line2);color:var(--muted);
     font-family:'Inter',sans-serif;font-weight:500;font-size:13px;
-    padding:10px;border-radius:2px;cursor:pointer;transition:all .15s;
+    padding:10px;border-radius:0;cursor:pointer;transition:all .15s;
   }
-  .toggle button.active{border-color:var(--ember);color:var(--paper);background:rgba(232,83,42,0.09);}
+  .toggle button.active{border-color:var(--ink);color:var(--ink);background:#F4F4F4;}
+
+  .gen-btn{
+    width:100%;margin-top:10px;background:var(--paper);border:1px solid var(--ink);color:var(--ink);
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13px;
+    padding:11px;border-radius:0;cursor:pointer;transition:all .15s;
+  }
+  .gen-btn:hover{background:#F4F4F4;}
+  .gen-btn:disabled{border-color:var(--line2);color:#B5B5B5;cursor:not-allowed;}
 
   .icon-pane{display:none;}
   .icon-pane.active{display:block;}
 
   .drop{
-    border:1px dashed var(--line);border-radius:2px;
+    border:1px dashed var(--line2);border-radius:0;
     padding:20px;text-align:center;cursor:pointer;
     transition:border-color .15s, background .15s;
   }
-  .drop:hover, .drop.drag{border-color:var(--ember);background:rgba(232,83,42,0.05);}
+  .drop:hover, .drop.drag{border-color:var(--ink);background:#FAFAFA;}
   .drop input{display:none;}
-  .drop-txt{color:var(--steel);font-size:13px;}
-  .drop-txt strong{color:var(--paper);}
+  .drop-txt{color:var(--muted);font-size:13px;}
+  .drop-txt strong{color:var(--ink);}
 
   #preview-row{display:none;align-items:center;gap:12px;margin-top:12px;}
   #preview-row.show{display:flex;}
   #preview-canvas{
-    width:56px;height:56px;border-radius:8px;border:1px solid var(--line);
-    image-rendering:pixelated;
+    width:56px;height:56px;border-radius:0;border:1px solid var(--line2);
+    image-rendering:auto;
   }
-  #preview-name{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--steel);}
+  #preview-name{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);}
 
   .forge-btn{
-    width:100%;background:var(--ember);color:var(--char);
-    font-family:'Oswald',sans-serif;font-weight:600;font-size:16px;
-    letter-spacing:.03em;text-transform:uppercase;
-    border:none;border-radius:2px;padding:16px;cursor:pointer;
+    width:100%;background:var(--ink);color:var(--paper);
+    font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;
+    font-weight:400;font-size:18px;
+    letter-spacing:.04em;text-transform:uppercase;
+    border:none;border-radius:0;padding:16px;cursor:pointer;
     margin-top:18px;
     transition:transform .08s ease, background .15s;
   }
-  .forge-btn:hover{background:var(--ember2);}
+  .forge-btn:hover{background:#000000;}
   .forge-btn:active{transform:scale(0.985);}
-  .forge-btn:disabled{background:#4a3b34;color:#8a7b73;cursor:not-allowed;}
+  .forge-btn:disabled{background:#C9C9C9;color:#F4F4F4;cursor:not-allowed;}
 
   #status{
     margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;
-    color:var(--steel);line-height:1.9;min-height:0;
+    color:var(--muted);line-height:1.9;min-height:0;
   }
-  #status .ok{color:#7FBF95;}
-  #status .now{color:var(--ember2);}
+  #status .ok{color:var(--ok);}
+  #status .now{color:var(--ink);}
 
-  #result{display:none;margin-top:18px;border:1px solid var(--line);padding:20px;border-radius:2px;background:rgba(127,191,149,0.05);}
+  #result{display:none;margin-top:18px;border:1px solid var(--line);padding:20px;border-radius:0;background:#FAFCFB;}
   #result.show{display:block;}
-  #result h3{font-family:'Oswald',sans-serif;margin:0 0 6px;font-size:16px;color:#7FBF95;letter-spacing:.02em;}
-  #result p{color:var(--steel);font-size:13px;margin:0 0 14px;line-height:1.6;}
+  #result h3{font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;font-weight:400;margin:0 0 6px;font-size:18px;color:var(--ok);letter-spacing:.02em;text-transform:uppercase;}
+  #result p{color:var(--muted);font-size:13px;margin:0 0 14px;line-height:1.6;}
   .dl-btn{
-    display:inline-block;background:transparent;border:1px solid #7FBF95;color:#7FBF95;
+    display:inline-block;background:transparent;border:1px solid var(--ok);color:var(--ok);
     font-family:'JetBrains Mono',monospace;font-size:13px;padding:12px 18px;
-    border-radius:2px;text-decoration:none;cursor:pointer;
+    border-radius:0;text-decoration:none;cursor:pointer;
   }
-  .dl-btn:hover{background:rgba(127,191,149,0.1);}
-  .dl-btn.open-btn{background:#7FBF95;color:var(--char);border-color:#7FBF95;margin-right:10px;}
-  .dl-btn.open-btn:hover{background:#93cca6;}
+  .dl-btn:hover{background:rgba(30,142,90,0.07);}
+  .dl-btn.open-btn{background:var(--ok);color:var(--paper);border-color:var(--ok);margin-right:10px;}
+  .dl-btn.open-btn:hover{background:#177349;}
   .hidden-el{display:none !important;}
 
-  .err{color:#E8532A;font-size:13px;margin-top:8px;display:none;}
+  .err{color:var(--err);font-size:13px;margin-top:8px;display:none;}
   .err.show{display:block;}
 </style>
 </head>
@@ -185,6 +197,7 @@
 
     <div class="icon-pane" id="paneDescribe">
       <input type="text" id="iconDesc" placeholder="e.g. a black logo with a white play button">
+      <button type="button" class="gen-btn" id="genBtn">Generate icon</button>
     </div>
 
     <div id="preview-row"><canvas id="preview-canvas" width="64" height="64"></canvas><span id="preview-name"></span></div>
@@ -206,11 +219,12 @@
 // Set this to your Worker's URL (see worker/deploy-worker.js) to enable
 // one-tap live deploys. Leave as-is to fall back to zip download only.
 const DEPLOY_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/deploy';
+const AI_ICON_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/generate-icon';
 
 // ---------- state ----------
 let iconMode = 'upload';
-let uploadedImg = null;      // HTMLImageElement
-let generatedIconSpec = null; // {shape, bg, fg}
+let uploadedImg = null;      // HTMLImageElement (from file upload OR AI generation)
+let generatedIconSpec = null; // template fallback spec, used only if AI generation fails
 
 // ---------- tabs ----------
 const tabUpload = document.getElementById('tabUpload');
@@ -246,8 +260,6 @@ function loadImageFile(file){
   };
   reader.readAsDataURL(file);
 }
-
-document.getElementById('iconDesc').addEventListener('input', updatePreview);
 
 const siteUrlInput = document.getElementById('siteUrl');
 siteUrlInput.addEventListener('focus', function(){
@@ -660,6 +672,8 @@ function renderMaskableToCanvas(canvas, spec, size){
 }
 
 // ---------- preview ----------
+let aiIconImg = null; // HTMLImageElement from Workers AI, describe-mode only
+
 function updatePreview(){
   const row = document.getElementById('preview-row');
   const canvas = document.getElementById('preview-canvas');
@@ -668,15 +682,50 @@ function updatePreview(){
     drawUploadedToCanvas(canvas, uploadedImg, 64);
     nameEl.textContent = 'Using uploaded image';
     row.classList.add('show');
-  } else if(iconMode === 'describe' && document.getElementById('iconDesc').value.trim()){
-    generatedIconSpec = parseDescription(document.getElementById('iconDesc').value);
-    renderIconToCanvas(canvas, generatedIconSpec, 64);
-    nameEl.textContent = 'Generated icon preview';
+  } else if(iconMode === 'describe' && aiIconImg){
+    drawUploadedToCanvas(canvas, aiIconImg, 64);
+    nameEl.textContent = 'AI-generated icon';
     row.classList.add('show');
   } else {
     row.classList.remove('show');
   }
 }
+
+// Clear the stale AI preview whenever the description changes so a forge
+// never accidentally ships an icon that doesn't match the current text.
+document.getElementById('iconDesc').addEventListener('input', () => {
+  aiIconImg = null;
+  updatePreview();
+});
+
+const genBtn = document.getElementById('genBtn');
+genBtn.addEventListener('click', async () => {
+  const prompt = document.getElementById('iconDesc').value.trim();
+  if(!prompt) return;
+  genBtn.disabled = true;
+  genBtn.textContent = 'Generating…';
+  try{
+    const res = await fetch(AI_ICON_ENDPOINT, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.image) throw new Error(data.error || 'Generation failed');
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve; img.onerror = reject;
+      img.src = 'data:image/jpeg;base64,' + data.image;
+    });
+    aiIconImg = img;
+    updatePreview();
+  }catch(err){
+    genBtn.textContent = 'Failed — tap to retry';
+    genBtn.disabled = false;
+    return;
+  }
+  genBtn.disabled = false;
+  genBtn.textContent = 'Regenerate icon';
+});
 
 function drawUploadedToCanvas(canvas, img, size){
   canvas.width = size; canvas.height = size;
@@ -754,6 +803,27 @@ document.getElementById('forgeBtn').onclick = async () => {
 
   log('Preparing icon…', 'now');
   await tick();
+  if(iconMode === 'describe' && !aiIconImg){
+    try{
+      const res = await fetch(AI_ICON_ENDPOINT, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt: document.getElementById('iconDesc').value.trim() })
+      });
+      const data = await res.json();
+      if(res.ok && data.image){
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve; img.onerror = reject;
+          img.src = 'data:image/jpeg;base64,' + data.image;
+        });
+        aiIconImg = img;
+      } else {
+        throw new Error(data.error || 'no image returned');
+      }
+    }catch(err){
+      log('AI icon generation unavailable — using a generated shape instead.', '');
+    }
+  }
   const zip = new JSZip();
   const iconsFolder = zip.folder('icons');
   const iconBlobs = {}; // for the live-deploy payload
@@ -764,21 +834,23 @@ document.getElementById('forgeBtn').onclick = async () => {
     {name:'icon-maskable-512.png', size:512, maskable:true},
   ];
 
+  const iconImg = iconMode === 'upload' ? uploadedImg : aiIconImg;
+
   for(const s of sizes){
     const canvas = document.createElement('canvas');
-    if(iconMode === 'upload'){
+    if(iconImg){
       if(s.maskable){
         canvas.width = s.size; canvas.height = s.size;
         const ctx = canvas.getContext('2d');
         // sample edge color for maskable bg fill so bleed matches the icon
-        const edgeColor = dominantColor(uploadedImg);
+        const edgeColor = dominantColor(iconImg);
         ctx.fillStyle = edgeColor; ctx.fillRect(0,0,s.size,s.size);
         const inner = s.size * 0.7, offset = s.size*0.15;
-        const side = Math.min(uploadedImg.width, uploadedImg.height);
-        const sx = (uploadedImg.width - side)/2, sy = (uploadedImg.height - side)/2;
-        ctx.drawImage(uploadedImg, sx, sy, side, side, offset, offset, inner, inner);
+        const side = Math.min(iconImg.width, iconImg.height);
+        const sx = (iconImg.width - side)/2, sy = (iconImg.height - side)/2;
+        ctx.drawImage(iconImg, sx, sy, side, side, offset, offset, inner, inner);
       } else {
-        drawUploadedToCanvas(canvas, uploadedImg, s.size);
+        drawUploadedToCanvas(canvas, iconImg, s.size);
       }
     } else {
       const spec = generatedIconSpec || parseDescription(document.getElementById('iconDesc').value);
@@ -791,8 +863,8 @@ document.getElementById('forgeBtn').onclick = async () => {
   }
   document.querySelector('#status div:last-child').className = 'ok';
 
-  if(iconMode === 'upload'){
-    themeColor = dominantColor(uploadedImg);
+  if(iconImg){
+    themeColor = dominantColor(iconImg);
   }
   bgColor = '#FFFFFF';
 
@@ -842,38 +914,40 @@ self.addEventListener('fetch', e => {
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
-  html,body{margin:0;height:100%;background:${themeColor};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:${fgColor};}
-  body{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;box-sizing:border-box;}
-  img{width:84px;height:84px;border-radius:20px;margin-bottom:18px;box-shadow:0 6px 24px rgba(0,0,0,0.25);}
-  h1{font-size:19px;margin:0 0 22px;font-weight:600;}
-  button, .cta{
-    font:inherit;font-weight:600;font-size:16px;border:none;border-radius:10px;
-    padding:14px 28px;cursor:pointer;background:${fgColor};color:${themeColor};
-    text-decoration:none;display:inline-block;min-width:200px;
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  #bar{
+    display:flex;align-items:center;gap:10px;padding:10px 14px;
+    background:${themeColor};color:${fgColor};box-sizing:border-box;
   }
-  .hint{margin-top:16px;font-size:13.5px;opacity:0.85;max-width:280px;line-height:1.5;}
-  .hint b{white-space:nowrap;}
-  #loading{font-size:14px;opacity:0.75;}
-  .hidden{display:none;}
+  #bar img{width:24px;height:24px;border-radius:6px;flex-shrink:0;}
+  #bar span{font-weight:600;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #bar button{
+    font:inherit;font-weight:600;font-size:13px;border:none;border-radius:8px;
+    padding:8px 14px;cursor:pointer;background:${fgColor};color:${themeColor};flex-shrink:0;
+  }
+  .hidden{display:none !important;}
+  #iosHint{background:${themeColor};color:${fgColor};font-size:12px;padding:0 14px 10px;opacity:0.9;box-sizing:border-box;}
+  #frame{border:0;width:100%;height:calc(100% - 46px);display:block;}
+  body.standalone #bar, body.standalone #iosHint{display:none;}
+  body.standalone #frame{height:100%;}
+  #fallback{position:fixed;left:0;right:0;bottom:0;text-align:center;font-size:11.5px;padding:6px;background:rgba(0,0,0,0.04);}
+  #fallback a{color:${themeColor};}
 </style>
 </head>
 <body>
-<img src="icons/icon-192.png" alt="${escapeHtml(name)}">
-<h1>${escapeHtml(name)}</h1>
-
-<div id="loading">Loading…</div>
-
-<button id="installBtn" class="hidden">Install App</button>
-<div id="iosHint" class="hint hidden">Tap <b>Share</b> ↑ then <b>"Add to Home Screen"</b> to install</div>
-<a id="continueBtn" class="cta hidden" href="${escapeHtml(urlVal)}">Continue to app</a>
+<div id="bar">
+  <img src="icons/icon-192.png" alt="">
+  <span>${escapeHtml(name)}</span>
+  <button id="installBtn" class="hidden">Install</button>
+</div>
+<div id="iosHint" class="hidden">Tap Share ↑ then "Add to Home Screen" to install</div>
+<iframe id="frame" src="${escapeHtml(urlVal)}" title="${escapeHtml(name)}"></iframe>
+<div id="fallback">If the app looks blank, <a href="${escapeHtml(urlVal)}" target="_blank" rel="noopener">open it directly</a></div>
 
 <script>
-  var TARGET = ${JSON.stringify(urlVal)};
   var deferredPrompt = null;
-  var loading = document.getElementById('loading');
   var installBtn = document.getElementById('installBtn');
   var iosHint = document.getElementById('iosHint');
-  var continueBtn = document.getElementById('continueBtn');
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function(){});
@@ -883,20 +957,15 @@ self.addEventListener('fetch', e => {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
 
-  // Already installed and running as an app -> jump to the site, with a
-  // brief pause first (helps avoid a crash-on-launch bug seen on some
-  // Android/WebAPK builds when navigating cross-origin immediately)
   if (isStandalone()) {
-    setTimeout(function(){ window.location.replace(TARGET); }, 400);
+    document.body.classList.add('standalone');
   } else {
-    loading.classList.add('hidden');
     var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
     window.addEventListener('beforeinstallprompt', function(e){
       e.preventDefault();
       deferredPrompt = e;
       installBtn.classList.remove('hidden');
-      continueBtn.classList.add('hidden');
     });
 
     installBtn.addEventListener('click', function(){
@@ -904,27 +973,11 @@ self.addEventListener('fetch', e => {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(function(choice){
         deferredPrompt = null;
-        if (choice.outcome === 'accepted') {
-          installBtn.classList.add('hidden');
-          loading.textContent = 'Installed — opening…';
-          loading.classList.remove('hidden');
-          setTimeout(function(){ window.location.replace(TARGET); }, 600);
-        }
+        if (choice.outcome === 'accepted') installBtn.classList.add('hidden');
       });
     });
 
-    if (isIOS) {
-      iosHint.classList.remove('hidden');
-      continueBtn.textContent = 'Continue in browser';
-      continueBtn.classList.remove('hidden');
-    } else {
-      // Android/desktop without a fired prompt yet (e.g. already dismissed) — offer a way in
-      setTimeout(function(){
-        if (!deferredPrompt) {
-          continueBtn.classList.remove('hidden');
-        }
-      }, 1200);
-    }
+    if (isIOS) iosHint.classList.remove('hidden');
   }
 <\/script>
 </body>
@@ -934,18 +987,25 @@ self.addEventListener('fetch', e => {
   const readme = `${name} — PWA package
 =========================
 
-This is an installable PWA shell that opens ${urlVal}
+This is an installable PWA shell that embeds ${urlVal} directly in an
+iframe — there is no redirect to the site's own domain. A thin top bar
+shows the app name and an Install button; once installed and running
+standalone, the bar hides itself and the site fills the whole screen.
 
-Once hosted, opening the link shows a one-tap "Install App" button on
-Android/Chrome (uses the native install prompt) and a "tap Share > Add
-to Home Screen" nudge on iOS (Apple blocks anything more automatic than
-that). Anyone already installed skips the splash and goes straight in.
+On Android/Chrome, Install uses the native one-tap install prompt. On
+iOS, Apple blocks anything more automatic than a manual nudge: "tap
+Share > Add to Home Screen."
+
+Note: a small number of sites set headers that block being framed
+(X-Frame-Options / CSP frame-ancestors). If the embedded app looks
+blank, there's a fallback link at the bottom of the screen to open the
+site directly instead.
 
 Deploy (Cloudflare Pages, drag-and-drop):
 1. Go to pages.cloudflare.com > Create a project > Direct upload
 2. Drag this whole unzipped folder in
 3. Deploy — you'll get a *.pages.dev link
-4. Open that link on a phone, use "Add to Home Screen" (Android/Chrome shows an Install prompt automatically)
+4. Open that link on a phone and tap Install
 
 Deploy (any static host):
 Upload index.html, manifest.json, sw.js and the icons/ folder to any static file host, keeping the folder structure intact.
