@@ -883,9 +883,11 @@ self.addEventListener('fetch', e => {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
 
-  // Already installed and running as an app -> skip straight to the site
+  // Already installed and running as an app -> jump to the site, with a
+  // brief pause first (helps avoid a crash-on-launch bug seen on some
+  // Android/WebAPK builds when navigating cross-origin immediately)
   if (isStandalone()) {
-    window.location.replace(TARGET);
+    setTimeout(function(){ window.location.replace(TARGET); }, 400);
   } else {
     loading.classList.add('hidden');
     var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -900,10 +902,14 @@ self.addEventListener('fetch', e => {
     installBtn.addEventListener('click', function(){
       if (!deferredPrompt) return;
       deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(function(){
+      deferredPrompt.userChoice.then(function(choice){
         deferredPrompt = null;
-        installBtn.classList.add('hidden');
-        window.location.href = TARGET;
+        if (choice.outcome === 'accepted') {
+          installBtn.classList.add('hidden');
+          loading.textContent = 'Installed — opening…';
+          loading.classList.remove('hidden');
+          setTimeout(function(){ window.location.replace(TARGET); }, 600);
+        }
       });
     });
 
