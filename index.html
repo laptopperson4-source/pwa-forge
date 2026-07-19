@@ -144,6 +144,9 @@
     border-radius:2px;text-decoration:none;cursor:pointer;
   }
   .dl-btn:hover{background:rgba(127,191,149,0.1);}
+  .dl-btn.open-btn{background:#7FBF95;color:var(--char);border-color:#7FBF95;margin-right:10px;}
+  .dl-btn.open-btn:hover{background:#93cca6;}
+  .hidden-el{display:none !important;}
 
   .err{color:#E8532A;font-size:13px;margin-top:8px;display:none;}
   .err.show{display:block;}
@@ -193,11 +196,17 @@
   <div id="result">
     <h3>Your PWA is ready</h3>
     <p id="resultDetail"></p>
+    <a class="dl-btn open-btn hidden-el" id="openLink" target="_blank" rel="noopener">Open your app</a>
     <a class="dl-btn" id="downloadLink" download="pwa.zip">Download zip</a>
   </div>
 </div>
 
 <script>
+// ---------- deploy config ----------
+// Set this to your Worker's URL (see worker/deploy-worker.js) to enable
+// one-tap live deploys. Leave as-is to fall back to zip download only.
+const DEPLOY_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/deploy';
+
 // ---------- state ----------
 let iconMode = 'upload';
 let uploadedImg = null;      // HTMLImageElement
@@ -531,6 +540,7 @@ document.getElementById('forgeBtn').onclick = async () => {
   await tick();
   const zip = new JSZip();
   const iconsFolder = zip.folder('icons');
+  const iconBlobs = {}; // for the live-deploy payload
   const sizes = [
     {name:'icon-192.png', size:192, maskable:false},
     {name:'icon-512.png', size:512, maskable:false},
@@ -561,6 +571,7 @@ document.getElementById('forgeBtn').onclick = async () => {
     }
     const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     iconsFolder.file(s.name, blob);
+    iconBlobs['icons/' + s.name] = blob;
   }
   document.querySelector('#status div:last-child').className = 'ok';
 
@@ -728,11 +739,62 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
   const dl = document.getElementById('downloadLink');
   dl.href = url;
   dl.download = short.toLowerCase().replace(/\s+/g,'-') + '-pwa.zip';
-  document.getElementById('resultDetail').textContent = `${name} · points to ${urlVal}`;
+
+  // ---------- attempt a live deploy ----------
+  let liveUrl = null;
+  if(DEPLOY_ENDPOINT){
+    log('Publishing your app…', 'now');
+    try{
+      const filesForDeploy = {
+        'index.html': await blobToBase64(new Blob([indexHtml], {type:'text/html'})),
+        'manifest.json': await blobToBase64(new Blob([JSON.stringify(manifest, null, 2)], {type:'application/json'})),
+        'sw.js': await blobToBase64(new Blob([sw], {type:'application/javascript'}))
+      };
+      for(const path in iconBlobs){
+        filesForDeploy[path] = await blobToBase64(iconBlobs[path]);
+      }
+      const projectName = short.toLowerCase().replace(/\s+/g,'-') + '-' + Math.random().toString(36).slice(2,7);
+      const res = await fetch(DEPLOY_ENDPOINT, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({projectName, files: filesForDeploy})
+      });
+      const data = await res.json();
+      if(res.ok && data.url){
+        liveUrl = data.url;
+        document.querySelector('#status div:last-child').className = 'ok';
+      } else {
+        throw new Error(data.error || 'deploy failed');
+      }
+    }catch(err){
+      const last = document.querySelector('#status div:last-child');
+      last.textContent = 'Live publish unavailable — zip is ready instead';
+    }
+  }
+
+  const openLink = document.getElementById('openLink');
+  const resultDetail = document.getElementById('resultDetail');
+  if(liveUrl){
+    openLink.href = liveUrl;
+    openLink.textContent = 'Open your app';
+    openLink.classList.remove('hidden-el');
+    resultDetail.textContent = `${name} is live at ${liveUrl.replace(/^https?:\/\//,'')} — open it on your phone and tap Install.`;
+  } else {
+    openLink.classList.add('hidden-el');
+    resultDetail.textContent = `${name} · points to ${urlVal}`;
+  }
   document.getElementById('result').classList.add('show');
 
   btn.disabled = false;
 };
+
+function blobToBase64(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 function tick(){ return new Promise(r => setTimeout(r, 180)); }
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
