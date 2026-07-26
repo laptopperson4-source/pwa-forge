@@ -146,10 +146,39 @@
   #preview-row.show{display:flex;}
   #preview-canvas{
     width:56px;height:56px;border-radius:12px;border:1px solid var(--panel-border);
-    image-rendering:auto;
+    image-rendering:auto;cursor:pointer;
     box-shadow:0 0 0 3px rgba(139,92,246,0.15);
   }
   #preview-name{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);}
+  .tap-hint{font-family:'Inter',sans-serif;font-size:11px;color:#5C5C72;margin-left:auto;}
+  #preview-row{cursor:pointer;}
+
+  .hidden-el{display:none !important;}
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(8,8,14,0.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;
+  }
+  .modal-card{
+    width:100%;max-width:360px;background:#15151F;border:1px solid var(--panel-border);border-radius:18px;
+    padding:22px;box-shadow:0 30px 60px -20px rgba(0,0,0,0.6);
+  }
+  .modal-title{
+    font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;font-weight:400;
+    font-size:17px;letter-spacing:.03em;text-transform:uppercase;color:var(--paper);margin-bottom:14px;
+  }
+  .crop-viewport{
+    width:100%;aspect-ratio:1/1;border-radius:14px;overflow:hidden;position:relative;
+    background:#000;touch-action:none;border:1px solid var(--panel-border);
+  }
+  .crop-viewport img{position:absolute;left:0;top:0;user-select:none;-webkit-user-drag:none;}
+  #cropZoom{width:100%;margin-top:16px;accent-color:var(--grad2);}
+  .big-preview{width:100%;aspect-ratio:1/1;border-radius:16px;border:1px solid var(--panel-border);}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;}
+  .modal-btn{
+    flex:1;font-family:'Inter',sans-serif;font-weight:600;font-size:14px;padding:12px;border-radius:10px;cursor:pointer;border:none;
+  }
+  .modal-btn.ghost{background:transparent;border:1px solid var(--panel-border);color:var(--muted);}
+  .modal-btn.primary{background:linear-gradient(90deg,var(--grad1),var(--grad2));color:var(--bg0);font-weight:700;}
 
   .forge-btn{
     width:100%;color:var(--bg0);
@@ -238,7 +267,7 @@
       <button type="button" class="gen-btn" id="genBtn">Generate icon</button>
     </div>
 
-    <div id="preview-row"><canvas id="preview-canvas" width="64" height="64"></canvas><span id="preview-name"></span></div>
+    <div id="preview-row"><canvas id="preview-canvas" width="64" height="64"></canvas><span id="preview-name"></span><span class="tap-hint">tap to preview</span></div>
   </div>
 
   <button class="forge-btn" id="forgeBtn">Forge PWA</button>
@@ -252,17 +281,37 @@
   </div>
 </div>
 
+<div id="previewModal" class="modal-overlay hidden-el">
+  <div class="modal-card">
+    <div id="cropStage" class="hidden-el">
+      <div class="modal-title">Adjust crop</div>
+      <div id="cropViewport" class="crop-viewport"><img id="cropImg" draggable="false" alt=""></div>
+      <input type="range" id="cropZoom" min="1" max="3" step="0.01" value="1">
+      <div class="modal-actions">
+        <button type="button" id="cropCancel" class="modal-btn ghost">Cancel</button>
+        <button type="button" id="cropApply" class="modal-btn primary">Use this crop</button>
+      </div>
+    </div>
+    <div id="viewStage" class="hidden-el">
+      <div class="modal-title">Icon preview</div>
+      <canvas id="bigPreviewCanvas" class="big-preview" width="320" height="320"></canvas>
+      <div class="modal-actions">
+        <button type="button" id="viewClose" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---------- deploy config ----------
 // Set this to your Worker's URL (see worker/deploy-worker.js) to enable
 // one-tap live deploys. Leave as-is to fall back to zip download only.
 const DEPLOY_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/deploy';
-const AI_ICON_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/generate-icon';
 
 // ---------- state ----------
 let iconMode = 'upload';
 let uploadedImg = null;      // HTMLImageElement (from file upload OR AI generation)
-let generatedIconSpec = null; // template fallback spec, used only if AI generation fails
+let generatedIconSpec = null; // spec for describe-mode icon, rendered as SVG
 
 // ---------- tabs ----------
 const tabUpload = document.getElementById('tabUpload');
@@ -377,165 +426,20 @@ function shadeColor(hex, percent){
   return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
 }
 
-// ---------- simple single-color glyphs ----------
-function drawShape(ctx, shape, cx, cy, r, color){
-  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = r*0.16;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  switch(shape){
-    case 'play':
-      ctx.beginPath();
-      ctx.moveTo(cx - r*0.55, cy - r*0.75);
-      ctx.lineTo(cx - r*0.55, cy + r*0.75);
-      ctx.lineTo(cx + r*0.85, cy);
-      ctx.closePath(); ctx.fill();
-      break;
-    case 'pause':
-      ctx.fillRect(cx - r*0.6, cy - r*0.7, r*0.4, r*1.4);
-      ctx.fillRect(cx + r*0.2, cy - r*0.7, r*0.4, r*1.4);
-      break;
-    case 'star': {
-      ctx.beginPath();
-      for(let i=0;i<10;i++){
-        const ang = (Math.PI/5)*i - Math.PI/2;
-        const rad = i%2===0 ? r : r*0.42;
-        const x = cx + rad*Math.cos(ang), y = cy + rad*Math.sin(ang);
-        i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
-      }
-      ctx.closePath(); ctx.fill();
-      break;
-    }
-    case 'heart':
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + r*0.75);
-      ctx.bezierCurveTo(cx - r*1.3, cy - r*0.35, cx - r*0.5, cy - r*1.25, cx, cy - r*0.35);
-      ctx.bezierCurveTo(cx + r*0.5, cy - r*1.25, cx + r*1.3, cy - r*0.35, cx, cy + r*0.75);
-      ctx.closePath(); ctx.fill();
-      break;
-    case 'mail':
-      ctx.strokeRect(cx - r, cy - r*0.65, r*2, r*1.3);
-      ctx.beginPath(); ctx.moveTo(cx - r, cy - r*0.6); ctx.lineTo(cx, cy + r*0.1); ctx.lineTo(cx + r, cy - r*0.6); ctx.stroke();
-      break;
-    case 'chat':
-      ctx.beginPath();
-      ctx.moveTo(cx - r, cy - r*0.7); ctx.lineTo(cx + r, cy - r*0.7);
-      ctx.quadraticCurveTo(cx + r*1.15, cy - r*0.7, cx + r*1.15, cy - r*0.4);
-      ctx.lineTo(cx + r*1.15, cy + r*0.25);
-      ctx.quadraticCurveTo(cx + r*1.15, cy + r*0.55, cx + r*0.85, cy + r*0.55);
-      ctx.lineTo(cx - r*0.5, cy + r*0.55); ctx.lineTo(cx - r*0.85, cy + r*1.05); ctx.lineTo(cx - r*0.75, cy + r*0.55);
-      ctx.lineTo(cx - r, cy + r*0.55);
-      ctx.quadraticCurveTo(cx - r*1.15, cy + r*0.55, cx - r*1.15, cy + r*0.25);
-      ctx.lineTo(cx - r*1.15, cy - r*0.4);
-      ctx.quadraticCurveTo(cx - r*1.15, cy - r*0.7, cx - r, cy - r*0.7);
-      ctx.fill();
-      break;
-    case 'cart':
-      ctx.beginPath();
-      ctx.moveTo(cx - r*1.1, cy - r*0.75); ctx.lineTo(cx - r*0.75, cy - r*0.75);
-      ctx.lineTo(cx - r*0.35, cy + r*0.35); ctx.lineTo(cx + r*0.85, cy + r*0.35);
-      ctx.lineTo(cx + r*1.15, cy - r*0.35); ctx.lineTo(cx - r*0.55, cy - r*0.35);
-      ctx.stroke();
-      ctx.beginPath(); ctx.arc(cx - r*0.15, cy + r*0.85, r*0.15, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + r*0.65, cy + r*0.85, r*0.15, 0, Math.PI*2); ctx.fill();
-      break;
-    case 'gear':
-      for(let i=0;i<8;i++){
-        const ang = (Math.PI/4)*i;
-        ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang);
-        ctx.fillRect(-r*0.14, -r*1.15, r*0.28, r*0.35);
-        ctx.restore();
-      }
-      ctx.beginPath(); ctx.arc(cx, cy, r*0.68, 0, Math.PI*2); ctx.fill();
-      break;
-    case 'music':
-      ctx.beginPath(); ctx.arc(cx - r*0.45, cy + r*0.65, r*0.32, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + r*0.5, cy + r*0.45, r*0.32, 0, Math.PI*2); ctx.fill();
-      ctx.fillRect(cx - r*0.16, cy - r*0.95, r*0.1, r*1.55);
-      ctx.fillRect(cx + r*0.78, cy - r*1.15, r*0.1, r*1.55);
-      ctx.beginPath(); ctx.moveTo(cx - r*0.16, cy - r*0.95); ctx.lineTo(cx + r*0.88, cy - r*1.15);
-      ctx.lineTo(cx + r*0.88, cy - r*0.65); ctx.lineTo(cx - r*0.16, cy - r*0.45); ctx.closePath(); ctx.fill();
-      break;
-    case 'camera':
-      ctx.strokeRect(cx - r, cy - r*0.55, r*2, r*1.3);
-      ctx.fillRect(cx - r*0.35, cy - r*0.95, r*0.7, r*0.4);
-      ctx.beginPath(); ctx.arc(cx, cy + r*0.1, r*0.45, 0, Math.PI*2); ctx.stroke();
-      break;
-    case 'book':
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r*0.75);
-      ctx.bezierCurveTo(cx - r*0.4, cy - r*1.0, cx - r*1.1, cy - r*0.95, cx - r*1.1, cy - r*0.65);
-      ctx.lineTo(cx - r*1.1, cy + r*0.85);
-      ctx.bezierCurveTo(cx - r*0.4, cy + r*0.6, cx, cy + r*0.85, cx, cy + r*0.85);
-      ctx.bezierCurveTo(cx, cy + r*0.85, cx + r*0.4, cy + r*0.6, cx + r*1.1, cy + r*0.85);
-      ctx.lineTo(cx + r*1.1, cy - r*0.65);
-      ctx.bezierCurveTo(cx + r*1.1, cy - r*0.95, cx + r*0.4, cy - r*1.0, cx, cy - r*0.75);
-      ctx.closePath(); ctx.fill();
-      break;
-    case 'phone':
-      ctx.beginPath();
-      ctx.moveTo(cx - r*0.9, cy - r*0.6);
-      ctx.bezierCurveTo(cx - r*0.9, cy - r*1.0, cx - r*0.3, cy - r*0.55, cx - r*0.05, cy - r*0.3);
-      ctx.bezierCurveTo(cx + r*0.15, cy - r*0.1, cx - r*0.05, cy + r*0.05, cx - r*0.2, cy + r*0.2);
-      ctx.bezierCurveTo(cx + r*0.05, cy + r*0.7, cx + r*0.4, cy + r*0.95, cx + r*0.9, cy + r*1.1);
-      ctx.bezierCurveTo(cx + r*1.05, cy + r*0.85, cx + r*0.6, cy + r*0.65, cx + r*0.4, cy + r*0.85);
-      ctx.bezierCurveTo(cx + r*0.1, cy + r*0.5, cx - r*0.1, cy + r*0.1, cx + r*0.05, cy - r*0.15);
-      ctx.bezierCurveTo(cx + r*0.3, cy - r*0.35, cx - r*0.55, cy - r*0.95, cx - r*0.9, cy - r*0.6);
-      ctx.closePath(); ctx.fill();
-      break;
-    case 'bolt':
-      ctx.beginPath();
-      ctx.moveTo(cx + r*0.25, cy - r*1.05); ctx.lineTo(cx - r*0.65, cy + r*0.15);
-      ctx.lineTo(cx - r*0.05, cy + r*0.15); ctx.lineTo(cx - r*0.25, cy + r*1.05);
-      ctx.lineTo(cx + r*0.65, cy - r*0.25); ctx.lineTo(cx + r*0.05, cy - r*0.25);
-      ctx.closePath(); ctx.fill();
-      break;
-    case 'check':
-      ctx.lineWidth = r*0.3;
-      ctx.beginPath(); ctx.moveTo(cx - r*0.75, cy + r*0.05); ctx.lineTo(cx - r*0.15, cy + r*0.65); ctx.lineTo(cx + r*0.85, cy - r*0.65); ctx.stroke();
-      break;
-    case 'rectangle':
-      ctx.fillRect(cx - r*1.0, cy - r*0.6, r*2.0, r*1.2);
-      break;
-    case 'square':
-      ctx.fillRect(cx - r*0.75, cy - r*0.75, r*1.5, r*1.5);
-      break;
-    case 'triangleShape':
-      ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r*0.9, cy + r*0.75); ctx.lineTo(cx - r*0.9, cy + r*0.75);
-      ctx.closePath(); ctx.fill();
-      break;
-    case 'letter': {
-      const letter = (document.getElementById('siteUrl').value || 'A').replace(/^https?:\/\//,'').replace(/^www\./,'').trim()[0] || 'A';
-      ctx.font = `${r*1.5}px Oswald, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(letter.toUpperCase(), cx, cy + r*0.08);
-      break;
-    }
-    case 'circle':
-    default:
-      ctx.beginPath(); ctx.arc(cx, cy, r*0.8, 0, Math.PI*2); ctx.fill();
-  }
-}
-const SIMPLE_SHAPES = new Set(['play','pause','star','heart','mail','chat','cart','gear','music','camera','book','phone','bolt','check','rectangle','square','triangleShape','letter','circle']);
-
-// ---------- composite multi-part, multi-color objects ----------
-function drawPrimitive(ctx, size, p){
-  const X = v => v*size;
+// ---------- SVG icon engine ----------
+// Vector output means every icon size (192/512/maskable) is rasterized fresh
+// from the same source, so nothing is ever upscaled/blurry. Gradients + a
+// soft drop-shadow give these a "designed" look instead of flat shapes.
+function svgPart(p, palette){
+  let color = p.fixed || palette[(p.colorSlot||0) % palette.length];
+  if(p.shade) color = shadeColor(color, p.shade);
+  const X = v => (v*100).toFixed(2);
   switch(p.type){
-    case 'rect': ctx.fillRect(X(p.x),X(p.y),X(p.w),X(p.h)); break;
-    case 'circle': ctx.beginPath(); ctx.arc(X(p.cx),X(p.cy),X(p.r),0,Math.PI*2); ctx.fill(); break;
-    case 'ellipse': ctx.beginPath(); ctx.ellipse(X(p.cx),X(p.cy),X(p.rx),X(p.ry),0,0,Math.PI*2); ctx.fill(); break;
-    case 'poly':
-      ctx.beginPath();
-      p.pts.forEach((pt,i)=>{ i ? ctx.lineTo(X(pt[0]),X(pt[1])) : ctx.moveTo(X(pt[0]),X(pt[1])); });
-      ctx.closePath(); ctx.fill();
-      break;
-  }
-}
-function drawParts(ctx, size, parts, palette){
-  for(const p of parts){
-    let color = p.fixed || palette[(p.colorSlot||0) % palette.length];
-    if(p.shade) color = shadeColor(color, p.shade);
-    ctx.fillStyle = color;
-    drawPrimitive(ctx, size, p);
+    case 'rect': return `<rect x="${X(p.x)}" y="${X(p.y)}" width="${X(p.w)}" height="${X(p.h)}" fill="${color}"/>`;
+    case 'circle': return `<circle cx="${X(p.cx)}" cy="${X(p.cy)}" r="${X(p.r)}" fill="${color}"/>`;
+    case 'ellipse': return `<ellipse cx="${X(p.cx)}" cy="${X(p.cy)}" rx="${X(p.rx)}" ry="${X(p.ry)}" fill="${color}"/>`;
+    case 'poly': return `<polygon points="${p.pts.map(pt=>X(pt[0])+','+X(pt[1])).join(' ')}" fill="${color}"/>`;
+    default: return '';
   }
 }
 const COMPOSITE_RECIPES = {
@@ -617,101 +521,104 @@ const COMPOSITE_RECIPES = {
     {type:'poly', pts:[[0.35,0.2],[0.72,0.32],[0.35,0.44]], colorSlot:1}
   ]}
 };
-function drawSun(ctx,size,palette){
-  const c = palette[0];
-  ctx.fillStyle = c;
-  ctx.beginPath(); ctx.arc(size*0.5,size*0.5,size*0.17,0,Math.PI*2); ctx.fill();
-  for(let i=0;i<8;i++){
-    ctx.save(); ctx.translate(size*0.5,size*0.5); ctx.rotate(i*Math.PI/4);
-    ctx.fillRect(-size*0.02, -size*0.42, size*0.04, size*0.14);
-    ctx.restore();
-  }
+function svgSun(palette){
+  let rays = '';
+  for(let i=0;i<8;i++) rays += `<rect x="46" y="6" width="8" height="16" rx="3" fill="${palette[0]}" transform="rotate(${i*45} 50 50)"/>`;
+  return rays + `<circle cx="50" cy="50" r="17" fill="${palette[0]}"/>`;
 }
-function drawMoon(ctx,size,palette,bg){
-  ctx.fillStyle = palette[0];
-  ctx.beginPath(); ctx.arc(size*0.5,size*0.5,size*0.28,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = bg;
-  ctx.beginPath(); ctx.arc(size*0.6,size*0.44,size*0.24,0,Math.PI*2); ctx.fill();
+function svgMoon(palette, bg){
+  return `<circle cx="50" cy="50" r="28" fill="${palette[0]}"/><circle cx="61" cy="43" r="24" fill="${bg}"/>`;
 }
-function drawUmbrella(ctx,size,palette){
-  ctx.fillStyle = palette[0];
-  ctx.beginPath();
-  ctx.arc(size*0.5, size*0.5, size*0.3, Math.PI, 0);
-  ctx.lineTo(size*0.5,size*0.55); ctx.closePath(); ctx.fill();
+function svgUmbrella(palette){
   const dark = shadeColor(palette[0],-40);
-  ctx.fillStyle = dark;
-  ctx.fillRect(size*0.49,size*0.5,size*0.02,size*0.3);
-  ctx.beginPath(); ctx.arc(size*0.53,size*0.79,size*0.04,0,Math.PI); ctx.fill();
+  return `<path d="M18,52 A32,32 0 0,1 82,52 Z" fill="${palette[0]}"/><rect x="49" y="52" width="2.5" height="30" fill="${dark}"/><path d="M51.5,80 q0,9 9,4.5" stroke="${dark}" stroke-width="4.5" fill="none" stroke-linecap="round"/>`;
 }
-function drawBell(ctx,size,palette){
-  ctx.fillStyle = palette[0];
-  ctx.beginPath();
-  ctx.moveTo(size*0.3,size*0.55);
-  ctx.quadraticCurveTo(size*0.3,size*0.25,size*0.5,size*0.22);
-  ctx.quadraticCurveTo(size*0.7,size*0.25,size*0.7,size*0.55);
-  ctx.lineTo(size*0.78,size*0.62); ctx.lineTo(size*0.22,size*0.62);
-  ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.arc(size*0.5,size*0.68,size*0.05,0,Math.PI*2); ctx.fill();
+function svgBell(palette){
+  return `<path d="M30,55 Q30,24 50,21 Q70,24 70,55 L78,63 L22,63 Z" fill="${palette[0]}"/><circle cx="50" cy="69" r="5.5" fill="${palette[0]}"/>`;
 }
-function drawAbstract(ctx,size,palette){
-  ctx.fillStyle = palette[0];
-  ctx.beginPath(); ctx.arc(size*0.4,size*0.5,size*0.24,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = palette[1%palette.length];
-  ctx.beginPath();
-  ctx.moveTo(size*0.55,size*0.28); ctx.lineTo(size*0.82,size*0.72); ctx.lineTo(size*0.42,size*0.72);
-  ctx.closePath(); ctx.fill();
+function svgAbstract(palette){
+  return `<circle cx="40" cy="50" r="24" fill="${palette[0]}"/><polygon points="55,27 83,73 41,73" fill="${palette[1%palette.length]}" opacity="0.94"/>`;
 }
-const CUSTOM_COMPOSITES = { sun: drawSun, moon: drawMoon, umbrella: drawUmbrella, bell: drawBell, abstract: drawAbstract };
+const CUSTOM_COMPOSITES = { sun: svgSun, moon: svgMoon, umbrella: svgUmbrella, bell: svgBell, abstract: svgAbstract };
 
-function paletteFor(spec){
-  return spec.colors.length > 1 ? spec.colors.slice(1) : [contrastColor(spec.bg)];
-}
-function paintBackground(ctx, size, spec){
-  if(spec.gradient){
-    const g = ctx.createLinearGradient(0,0,size,size);
-    const c1 = spec.colors[0] || '#E8532A';
-    const c2 = spec.colors[1] || shadeColor(c1,-35);
-    g.addColorStop(0,c1); g.addColorStop(1,c2);
-    ctx.fillStyle = g;
-  } else {
-    ctx.fillStyle = spec.bg;
-  }
-  ctx.fillRect(0,0,size,size);
-}
-function drawIconContent(ctx, size, spec, scale){
-  const palette = paletteFor(spec);
-  if(CUSTOM_COMPOSITES[spec.shape]){
-    if(scale !== 1){ ctx.save(); ctx.translate(size*(1-scale)/2, size*(1-scale)/2); ctx.scale(scale,scale); }
-    CUSTOM_COMPOSITES[spec.shape](ctx, size, palette, spec.bg);
-    if(scale !== 1) ctx.restore();
-  } else if(COMPOSITE_RECIPES[spec.shape]){
-    if(scale !== 1){ ctx.save(); ctx.translate(size*(1-scale)/2, size*(1-scale)/2); ctx.scale(scale,scale); }
-    drawParts(ctx, size, COMPOSITE_RECIPES[spec.shape].parts, palette);
-    if(scale !== 1) ctx.restore();
-  } else {
-    drawShape(ctx, spec.shape, size/2, size/2, size*0.32*scale, palette[0]);
+function svgSimple(shape, color, letterSeed){
+  const c = color;
+  switch(shape){
+    case 'play': return `<polygon points="37,23 37,77 79,50" fill="${c}"/>`;
+    case 'pause': return `<rect x="33" y="25" width="13" height="50" rx="4" fill="${c}"/><rect x="54" y="25" width="13" height="50" rx="4" fill="${c}"/>`;
+    case 'star': { let pts=[]; for(let i=0;i<10;i++){ const ang=(Math.PI/5)*i-Math.PI/2, r=i%2===0?32:14; pts.push((50+r*Math.cos(ang)).toFixed(1)+','+(50+r*Math.sin(ang)).toFixed(1)); } return `<polygon points="${pts.join(' ')}" fill="${c}"/>`; }
+    case 'heart': return `<path d="M50,77 C18,53 27,24 50,39 C73,24 82,53 50,77 Z" fill="${c}"/>`;
+    case 'mail': return `<rect x="17" y="31" width="66" height="43" rx="5" fill="none" stroke="${c}" stroke-width="5.5"/><path d="M18,33 L50,58 L82,33" fill="none" stroke="${c}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    case 'chat': return `<path d="M18,24 h64 a9,9 0 0 1 9,9 v27 a9,9 0 0 1 -9,9 h-40 l-13,15 v-15 h-11 a9,9 0 0 1 -9,-9 v-27 a9,9 0 0 1 9,-9 Z" fill="${c}"/>`;
+    case 'cart': return `<path d="M13,21 h11 l11,39 h35 l10,-29 h-47" fill="none" stroke="${c}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="38" cy="78" r="5.5" fill="${c}"/><circle cx="65" cy="78" r="5.5" fill="${c}"/>`;
+    case 'gear': { let teeth=''; for(let i=0;i<8;i++) teeth += `<rect x="45.5" y="8" width="9" height="17" rx="2.5" fill="${c}" transform="rotate(${i*45} 50 50)"/>`; return teeth + `<circle cx="50" cy="50" r="21" fill="${c}"/>`; }
+    case 'music': return `<circle cx="31" cy="71" r="10.5" fill="${c}"/><circle cx="67" cy="65" r="10.5" fill="${c}"/><rect x="39.5" y="18" width="5.5" height="53" fill="${c}"/><rect x="72" y="12" width="5.5" height="53" fill="${c}"/><polygon points="39.5,18 77.5,10 77.5,25 39.5,33" fill="${c}"/>`;
+    case 'camera': return `<rect x="14" y="33" width="72" height="44" rx="9" fill="none" stroke="${c}" stroke-width="5.5"/><rect x="33" y="20" width="27" height="15" rx="3" fill="${c}"/><circle cx="50" cy="55" r="16" fill="none" stroke="${c}" stroke-width="5.5"/>`;
+    case 'book': return `<path d="M50,27 C41,18 20,20 20,31 V74 C20,65 41,63 50,70 C59,63 80,65 80,74 V31 C80,20 59,18 50,27 Z" fill="${c}"/>`;
+    case 'phone': return `<path d="M29,18 C18,18 18,33 25,42 C31,50 27,55 23,59 C29,72 39,80 52,84 C56,80 61,75 69,79 C80,73 82,58 75,52 C67,44 61,50 55,44 C48,37 40,27 29,18 Z" fill="${c}"/>`;
+    case 'bolt': return `<polygon points="57,12 18,57 43,57 39,88 82,41 55,41" fill="${c}"/>`;
+    case 'check': return `<path d="M20,52 L42,71 L81,25" fill="none" stroke="${c}" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    case 'rectangle': return `<rect x="14" y="31" width="72" height="38" rx="7" fill="${c}"/>`;
+    case 'square': return `<rect x="22" y="22" width="56" height="56" rx="9" fill="${c}"/>`;
+    case 'triangleShape': return `<polygon points="50,16 86,80 14,80" fill="${c}"/>`;
+    case 'letter': return `<text x="50" y="68" font-family="Impact,Haettenschweiler,sans-serif" font-size="54" text-anchor="middle" fill="${c}">${escapeHtmlIcon(letterSeed)}</text>`;
+    case 'circle': default: return `<circle cx="50" cy="50" r="31" fill="${c}"/>`;
   }
 }
+function escapeHtmlIcon(s){ return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 
-function renderIconToCanvas(canvas, spec, size){
-  canvas.width = size; canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,size,size);
-  paintBackground(ctx, size, spec);
-  drawIconContent(ctx, size, spec, 1);
+function buildIconSVG(spec, size, maskable){
+  const palette = spec.colors.length>1 ? spec.colors.slice(1) : [contrastColor(spec.bg)];
+  const bg1 = spec.colors[0] || '#0B0B0B';
+  const bg2 = spec.gradient ? (spec.colors[1] || shadeColor(bg1,-35)) : shadeColor(bg1, bg1==='#FFFFFF' ? -6 : 12);
+  const uid = Math.random().toString(36).slice(2,9);
+
+  let content;
+  if(COMPOSITE_RECIPES[spec.shape]) content = COMPOSITE_RECIPES[spec.shape].parts.map(p=>svgPart(p,palette)).join('');
+  else if(CUSTOM_COMPOSITES[spec.shape]) content = CUSTOM_COMPOSITES[spec.shape](palette, bg1);
+  else {
+    const letter = (document.getElementById('siteUrl').value||'A').replace(/^https?:\/\//,'').replace(/^www\./,'').trim()[0]||'A';
+    content = svgSimple(spec.shape, palette[0], letter.toUpperCase());
+  }
+
+  const rx = maskable ? 0 : 22;
+  const safe = maskable ? 0.6 : 0.84;
+  const off = ((100-safe*100)/2).toFixed(1);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}">
+<defs>
+<linearGradient id="bg${uid}" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="${bg1}"/><stop offset="100%" stop-color="${bg2}"/>
+</linearGradient>
+<radialGradient id="hl${uid}" cx="30%" cy="20%" r="60%">
+<stop offset="0%" stop-color="#ffffff" stop-opacity="0.24"/><stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+</radialGradient>
+<filter id="sh${uid}" x="-30%" y="-30%" width="160%" height="160%">
+<feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#000000" flood-opacity="0.32"/>
+</filter>
+</defs>
+<rect width="100" height="100" rx="${rx}" fill="url(#bg${uid})"/>
+<rect width="100" height="100" rx="${rx}" fill="url(#hl${uid})"/>
+<g filter="url(#sh${uid})" transform="translate(${off},${off}) scale(${safe.toFixed(3)})">${content}</g>
+</svg>`;
 }
 
-function renderMaskableToCanvas(canvas, spec, size){
-  // maskable icons need full-bleed bg with content inside the ~70% safe zone
-  canvas.width = size; canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  paintBackground(ctx, size, spec);
-  drawIconContent(ctx, size, spec, 0.7);
+function renderSVGToCanvas(svgMarkup, canvas, size){
+  return new Promise((resolve, reject) => {
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const blob = new Blob([svgMarkup], {type:'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { ctx.clearRect(0,0,size,size); ctx.drawImage(img,0,0,size,size); URL.revokeObjectURL(url); resolve(); };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
 }
+async function renderIconToCanvas(canvas, spec, size){ await renderSVGToCanvas(buildIconSVG(spec, size, false), canvas, size); }
+async function renderMaskableToCanvas(canvas, spec, size){ await renderSVGToCanvas(buildIconSVG(spec, size, true), canvas, size); }
 
 // ---------- preview ----------
-let aiIconImg = null; // HTMLImageElement from Workers AI, describe-mode only
-
 function updatePreview(){
   const row = document.getElementById('preview-row');
   const canvas = document.getElementById('preview-canvas');
@@ -720,19 +627,17 @@ function updatePreview(){
     drawUploadedToCanvas(canvas, uploadedImg, 64);
     nameEl.textContent = 'Using uploaded image';
     row.classList.add('show');
-  } else if(iconMode === 'describe' && aiIconImg){
-    drawUploadedToCanvas(canvas, aiIconImg, 64);
-    nameEl.textContent = 'AI-generated icon';
+  } else if(iconMode === 'describe' && generatedIconSpec){
+    renderIconToCanvas(canvas, generatedIconSpec, 64).catch(()=>{});
+    nameEl.textContent = 'Generated icon';
     row.classList.add('show');
   } else {
     row.classList.remove('show');
   }
 }
 
-// Clear the stale AI preview whenever the description changes so a forge
-// never accidentally ships an icon that doesn't match the current text.
 document.getElementById('iconDesc').addEventListener('input', () => {
-  aiIconImg = null;
+  generatedIconSpec = null;
   updatePreview();
 });
 
@@ -740,28 +645,8 @@ const genBtn = document.getElementById('genBtn');
 genBtn.addEventListener('click', async () => {
   const prompt = document.getElementById('iconDesc').value.trim();
   if(!prompt) return;
-  genBtn.disabled = true;
-  genBtn.textContent = 'Generating…';
-  try{
-    const res = await fetch(AI_ICON_ENDPOINT, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt })
-    });
-    const data = await res.json();
-    if(!res.ok || !data.image) throw new Error(data.error || 'Generation failed');
-    const img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = resolve; img.onerror = reject;
-      img.src = 'data:image/jpeg;base64,' + data.image;
-    });
-    aiIconImg = img;
-    updatePreview();
-  }catch(err){
-    genBtn.textContent = 'Failed — tap to retry';
-    genBtn.disabled = false;
-    return;
-  }
-  genBtn.disabled = false;
+  generatedIconSpec = parseDescription(prompt);
+  updatePreview();
   genBtn.textContent = 'Regenerate icon';
 });
 
@@ -772,6 +657,102 @@ function drawUploadedToCanvas(canvas, img, size){
   const sx = (img.width - side)/2, sy = (img.height - side)/2;
   ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
 }
+
+// ---------- preview / crop modal ----------
+const previewModal = document.getElementById('previewModal');
+const cropStage = document.getElementById('cropStage');
+const viewStage = document.getElementById('viewStage');
+const cropViewport = document.getElementById('cropViewport');
+const cropImgEl = document.getElementById('cropImg');
+const cropZoomEl = document.getElementById('cropZoom');
+let cropState = null;
+
+document.getElementById('preview-row').addEventListener('click', () => {
+  if(iconMode === 'upload' && uploadedImg) openCropModal();
+  else if(iconMode === 'describe' && generatedIconSpec) openViewModal();
+});
+
+function closeModal(){ previewModal.classList.add('hidden-el'); }
+previewModal.addEventListener('click', e => { if(e.target === previewModal) closeModal(); });
+
+function openViewModal(){
+  previewModal.classList.remove('hidden-el');
+  viewStage.classList.remove('hidden-el');
+  cropStage.classList.add('hidden-el');
+  renderIconToCanvas(document.getElementById('bigPreviewCanvas'), generatedIconSpec, 320).catch(()=>{});
+}
+document.getElementById('viewClose').addEventListener('click', closeModal);
+
+function openCropModal(){
+  previewModal.classList.remove('hidden-el');
+  cropStage.classList.remove('hidden-el');
+  viewStage.classList.add('hidden-el');
+  const VP = cropViewport.clientWidth || 280;
+  const nw = uploadedImg.naturalWidth || uploadedImg.width;
+  const nh = uploadedImg.naturalHeight || uploadedImg.height;
+  const baseScale = VP / Math.min(nw, nh);
+  cropState = { nw, nh, VP, baseScale, userScale:1 };
+  cropState.left = (VP - nw*baseScale)/2;
+  cropState.top  = (VP - nh*baseScale)/2;
+  cropImgEl.src = uploadedImg.src;
+  cropZoomEl.value = 1;
+  applyCropTransform();
+}
+
+function applyCropTransform(){
+  const {nw,nh,baseScale,userScale,left,top} = cropState;
+  const scale = baseScale*userScale;
+  cropImgEl.style.width = (nw*scale)+'px';
+  cropImgEl.style.height = (nh*scale)+'px';
+  cropImgEl.style.left = left+'px';
+  cropImgEl.style.top = top+'px';
+}
+function clampCrop(){
+  const {nw,nh,baseScale,userScale,VP} = cropState;
+  const scale = baseScale*userScale;
+  cropState.left = Math.min(0, Math.max(VP - nw*scale, cropState.left));
+  cropState.top  = Math.min(0, Math.max(VP - nh*scale, cropState.top));
+}
+
+let dragging = false, lastX = 0, lastY = 0;
+cropViewport.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  cropViewport.setPointerCapture(e.pointerId);
+});
+cropViewport.addEventListener('pointermove', e => {
+  if(!dragging || !cropState) return;
+  cropState.left += e.clientX - lastX;
+  cropState.top  += e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  clampCrop(); applyCropTransform();
+});
+['pointerup','pointercancel','pointerleave'].forEach(ev => cropViewport.addEventListener(ev, () => { dragging = false; }));
+
+cropZoomEl.addEventListener('input', () => {
+  const newUserScale = parseFloat(cropZoomEl.value);
+  const {baseScale,userScale,left,top,VP} = cropState;
+  const oldScale = baseScale*userScale, newScale = baseScale*newUserScale;
+  const imgX = (VP/2 - left)/oldScale, imgY = (VP/2 - top)/oldScale;
+  cropState.left = VP/2 - imgX*newScale;
+  cropState.top  = VP/2 - imgY*newScale;
+  cropState.userScale = newUserScale;
+  clampCrop(); applyCropTransform();
+});
+
+document.getElementById('cropCancel').addEventListener('click', closeModal);
+document.getElementById('cropApply').addEventListener('click', () => {
+  const {nw,baseScale,userScale,left,top,VP} = cropState;
+  const scale = baseScale*userScale;
+  const srcX = -left/scale, srcY = -top/scale, srcSize = VP/scale;
+  const OUT = 512;
+  const out = document.createElement('canvas');
+  out.width = OUT; out.height = OUT;
+  out.getContext('2d').drawImage(uploadedImg, srcX, srcY, srcSize, srcSize, 0, 0, OUT, OUT);
+  const newImg = new Image();
+  newImg.onload = () => { uploadedImg = newImg; updatePreview(); };
+  newImg.src = out.toDataURL('image/png');
+  closeModal();
+});
 
 // ---------- app name from URL ----------
 function nameFromUrl(url){
@@ -841,26 +822,8 @@ document.getElementById('forgeBtn').onclick = async () => {
 
   log('Preparing icon…', 'now');
   await tick();
-  if(iconMode === 'describe' && !aiIconImg){
-    try{
-      const res = await fetch(AI_ICON_ENDPOINT, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ prompt: document.getElementById('iconDesc').value.trim() })
-      });
-      const data = await res.json();
-      if(res.ok && data.image){
-        const img = new Image();
-        await new Promise((resolve, reject) => {
-          img.onload = resolve; img.onerror = reject;
-          img.src = 'data:image/jpeg;base64,' + data.image;
-        });
-        aiIconImg = img;
-      } else {
-        throw new Error(data.error || 'no image returned');
-      }
-    }catch(err){
-      log('AI icon generation unavailable — using a generated shape instead.', '');
-    }
+  if(iconMode === 'describe' && !generatedIconSpec){
+    generatedIconSpec = parseDescription(document.getElementById('iconDesc').value);
   }
   const zip = new JSZip();
   const iconsFolder = zip.folder('icons');
@@ -872,27 +835,25 @@ document.getElementById('forgeBtn').onclick = async () => {
     {name:'icon-maskable-512.png', size:512, maskable:true},
   ];
 
-  const iconImg = iconMode === 'upload' ? uploadedImg : aiIconImg;
-
   for(const s of sizes){
     const canvas = document.createElement('canvas');
-    if(iconImg){
+    if(iconMode === 'upload' && uploadedImg){
       if(s.maskable){
         canvas.width = s.size; canvas.height = s.size;
         const ctx = canvas.getContext('2d');
         // sample edge color for maskable bg fill so bleed matches the icon
-        const edgeColor = dominantColor(iconImg);
+        const edgeColor = dominantColor(uploadedImg);
         ctx.fillStyle = edgeColor; ctx.fillRect(0,0,s.size,s.size);
         const inner = s.size * 0.7, offset = s.size*0.15;
-        const side = Math.min(iconImg.width, iconImg.height);
-        const sx = (iconImg.width - side)/2, sy = (iconImg.height - side)/2;
-        ctx.drawImage(iconImg, sx, sy, side, side, offset, offset, inner, inner);
+        const side = Math.min(uploadedImg.width, uploadedImg.height);
+        const sx = (uploadedImg.width - side)/2, sy = (uploadedImg.height - side)/2;
+        ctx.drawImage(uploadedImg, sx, sy, side, side, offset, offset, inner, inner);
       } else {
-        drawUploadedToCanvas(canvas, iconImg, s.size);
+        drawUploadedToCanvas(canvas, uploadedImg, s.size);
       }
     } else {
       const spec = generatedIconSpec || parseDescription(document.getElementById('iconDesc').value);
-      s.maskable ? renderMaskableToCanvas(canvas, spec, s.size) : renderIconToCanvas(canvas, spec, s.size);
+      s.maskable ? await renderMaskableToCanvas(canvas, spec, s.size) : await renderIconToCanvas(canvas, spec, s.size);
       themeColor = spec.bg;
     }
     const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
@@ -901,8 +862,8 @@ document.getElementById('forgeBtn').onclick = async () => {
   }
   document.querySelector('#status div:last-child').className = 'ok';
 
-  if(iconImg){
-    themeColor = dominantColor(iconImg);
+  if(iconMode === 'upload' && uploadedImg){
+    themeColor = dominantColor(uploadedImg);
   }
   bgColor = '#FFFFFF';
 
