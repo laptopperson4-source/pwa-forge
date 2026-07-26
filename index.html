@@ -1082,11 +1082,11 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
       if(res.ok && data.url){
         liveUrl = data.url;
         document.querySelector('#status div:last-child').className = 'ok';
-        if(data.debug){
-          log('files in manifest: ' + data.debug.filesInManifest, '');
-          log('upload ok: ' + data.debug.uploadHttpOk + ' — ' + JSON.stringify(data.debug.uploadBody).slice(0,200), '');
-          log('hashes ok: ' + data.debug.upsertHttpOk + ' — ' + JSON.stringify(data.debug.upsertBody).slice(0,200), '');
-        }
+        try{
+          if(data.debug){
+            log('files in manifest: ' + data.debug.filesInManifest + ', buckets uploaded: ' + data.debug.bucketsUploaded, '');
+          }
+        }catch(logErr){ /* never let optional debug logging affect the result */ }
       } else {
         throw new Error(data.error || 'deploy failed');
       }
