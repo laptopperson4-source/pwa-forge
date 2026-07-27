@@ -49,6 +49,11 @@
     margin-bottom:18px;
   }
   .mark svg{width:16px;height:16px;stroke:var(--grad2);}
+  .build-tag{
+    font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.02em;text-transform:none;
+    color:var(--grad3);background:rgba(244,114,182,0.12);border:1px solid rgba(244,114,182,0.35);
+    padding:2px 7px;border-radius:20px;margin-left:2px;-webkit-background-clip:initial;background-clip:initial;
+  }
   h1{
     font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;
     font-weight:400;
@@ -237,6 +242,7 @@
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
       PWA Forge
+      <span class="build-tag">build 15 · AI SVG</span>
     </div>
     <h1>Site link in. <em>Installable app</em> out.</h1>
     <p class="sub">Give it a URL and an icon. It forges the manifest, service worker, and every icon size — then hands you a zip ready to deploy.</p>
@@ -307,11 +313,13 @@
 // Set this to your Worker's URL (see worker/deploy-worker.js) to enable
 // one-tap live deploys. Leave as-is to fall back to zip download only.
 const DEPLOY_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/deploy';
+const ICON_SVG_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/generate-icon';
 
 // ---------- state ----------
 let iconMode = 'upload';
 let uploadedImg = null;      // HTMLImageElement (from file upload OR AI generation)
-let generatedIconSpec = null; // spec for describe-mode icon, rendered as SVG
+let generatedIconSpec = null; // built-in vector fallback spec, used if the LLM is unavailable
+let generatedSVG = null; // raw SVG markup string from Groq, when available (preferred)
 
 // ---------- tabs ----------
 const tabUpload = document.getElementById('tabUpload');
@@ -603,6 +611,15 @@ function buildIconSVG(spec, size, maskable){
 </svg>`;
 }
 
+function sizeSVG(svgMarkup, size){
+  // Bake explicit pixel dimensions into the root <svg> tag so the browser
+  // rasterizes natively at this exact size (viewBox keeps the art correct) —
+  // without this, a sizeless SVG decodes at a small default and blurs on upscale.
+  if(/<svg[^>]*\swidth=/.test(svgMarkup)){
+    return svgMarkup.replace(/\swidth="[^"]*"/,` width="${size}"`).replace(/\sheight="[^"]*"/,` height="${size}"`);
+  }
+  return svgMarkup.replace('<svg ', `<svg width="${size}" height="${size}" `);
+}
 function renderSVGToCanvas(svgMarkup, canvas, size){
   return new Promise((resolve, reject) => {
     canvas.width = size; canvas.height = size;
@@ -627,9 +644,13 @@ function updatePreview(){
     drawUploadedToCanvas(canvas, uploadedImg, 64);
     nameEl.textContent = 'Using uploaded image';
     row.classList.add('show');
+  } else if(iconMode === 'describe' && generatedSVG){
+    renderSVGToCanvas(sizeSVG(generatedSVG, 64), canvas, 64).catch(()=>{});
+    nameEl.textContent = 'Generated icon';
+    row.classList.add('show');
   } else if(iconMode === 'describe' && generatedIconSpec){
     renderIconToCanvas(canvas, generatedIconSpec, 64).catch(()=>{});
-    nameEl.textContent = 'Generated icon';
+    nameEl.textContent = 'Generated icon (offline mode)';
     row.classList.add('show');
   } else {
     row.classList.remove('show');
@@ -638,16 +659,41 @@ function updatePreview(){
 
 document.getElementById('iconDesc').addEventListener('input', () => {
   generatedIconSpec = null;
+  generatedSVG = null;
   updatePreview();
 });
+
+async function generateIconFromPrompt(prompt){
+  // Try the LLM first (arbitrary shapes, unified compound paths); fall back
+  // instantly to the local template engine if it's unavailable — the tool
+  // should never hard-fail just because a network call didn't come back.
+  try{
+    const res = await fetch(ICON_SVG_ENDPOINT, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.svg) throw new Error(data.error || 'no svg returned');
+    generatedSVG = data.svg;
+    generatedIconSpec = null;
+    return true;
+  }catch(err){
+    generatedSVG = null;
+    generatedIconSpec = parseDescription(prompt);
+    return false;
+  }
+}
 
 const genBtn = document.getElementById('genBtn');
 genBtn.addEventListener('click', async () => {
   const prompt = document.getElementById('iconDesc').value.trim();
   if(!prompt) return;
-  generatedIconSpec = parseDescription(prompt);
+  genBtn.disabled = true;
+  genBtn.textContent = 'Generating…';
+  const ok = await generateIconFromPrompt(prompt);
   updatePreview();
-  genBtn.textContent = 'Regenerate icon';
+  genBtn.disabled = false;
+  genBtn.textContent = ok ? 'Regenerate icon' : 'Offline fallback used — tap to retry';
 });
 
 function drawUploadedToCanvas(canvas, img, size){
@@ -669,7 +715,7 @@ let cropState = null;
 
 document.getElementById('preview-row').addEventListener('click', () => {
   if(iconMode === 'upload' && uploadedImg) openCropModal();
-  else if(iconMode === 'describe' && generatedIconSpec) openViewModal();
+  else if(iconMode === 'describe' && (generatedSVG || generatedIconSpec)) openViewModal();
 });
 
 function closeModal(){ previewModal.classList.add('hidden-el'); }
@@ -679,7 +725,9 @@ function openViewModal(){
   previewModal.classList.remove('hidden-el');
   viewStage.classList.remove('hidden-el');
   cropStage.classList.add('hidden-el');
-  renderIconToCanvas(document.getElementById('bigPreviewCanvas'), generatedIconSpec, 320).catch(()=>{});
+  const bigCanvas = document.getElementById('bigPreviewCanvas');
+  if(generatedSVG) renderSVGToCanvas(sizeSVG(generatedSVG, 320), bigCanvas, 320).catch(()=>{});
+  else renderIconToCanvas(bigCanvas, generatedIconSpec, 320).catch(()=>{});
 }
 document.getElementById('viewClose').addEventListener('click', closeModal);
 
@@ -822,9 +870,28 @@ document.getElementById('forgeBtn').onclick = async () => {
 
   log('Preparing icon…', 'now');
   await tick();
-  if(iconMode === 'describe' && !generatedIconSpec){
-    generatedIconSpec = parseDescription(document.getElementById('iconDesc').value);
+  let groqRasterImg = null;
+  if(iconMode === 'describe'){
+    if(!generatedSVG && !generatedIconSpec){
+      const ok = await generateIconFromPrompt(document.getElementById('iconDesc').value.trim());
+      if(!ok) log('Using built-in shapes — the icon AI was unavailable.', '');
+    }
+    if(generatedSVG){
+      // Rasterize once at a high source resolution so every output size
+      // (including the 512 target) downscales cleanly instead of upscaling.
+      const SRC = 800;
+      const tmp = document.createElement('canvas');
+      await renderSVGToCanvas(sizeSVG(generatedSVG, SRC), tmp, SRC);
+      groqRasterImg = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = tmp.toDataURL('image/png');
+      });
+    }
   }
+  const iconRasterSource = (iconMode === 'upload' && uploadedImg) ? uploadedImg : groqRasterImg;
+
   const zip = new JSZip();
   const iconsFolder = zip.folder('icons');
   const iconBlobs = {}; // for the live-deploy payload
@@ -837,19 +904,19 @@ document.getElementById('forgeBtn').onclick = async () => {
 
   for(const s of sizes){
     const canvas = document.createElement('canvas');
-    if(iconMode === 'upload' && uploadedImg){
+    if(iconRasterSource){
       if(s.maskable){
         canvas.width = s.size; canvas.height = s.size;
         const ctx = canvas.getContext('2d');
         // sample edge color for maskable bg fill so bleed matches the icon
-        const edgeColor = dominantColor(uploadedImg);
+        const edgeColor = dominantColor(iconRasterSource);
         ctx.fillStyle = edgeColor; ctx.fillRect(0,0,s.size,s.size);
         const inner = s.size * 0.7, offset = s.size*0.15;
-        const side = Math.min(uploadedImg.width, uploadedImg.height);
-        const sx = (uploadedImg.width - side)/2, sy = (uploadedImg.height - side)/2;
-        ctx.drawImage(uploadedImg, sx, sy, side, side, offset, offset, inner, inner);
+        const side = Math.min(iconRasterSource.width, iconRasterSource.height);
+        const sx = (iconRasterSource.width - side)/2, sy = (iconRasterSource.height - side)/2;
+        ctx.drawImage(iconRasterSource, sx, sy, side, side, offset, offset, inner, inner);
       } else {
-        drawUploadedToCanvas(canvas, uploadedImg, s.size);
+        drawUploadedToCanvas(canvas, iconRasterSource, s.size);
       }
     } else {
       const spec = generatedIconSpec || parseDescription(document.getElementById('iconDesc').value);
@@ -862,8 +929,8 @@ document.getElementById('forgeBtn').onclick = async () => {
   }
   document.querySelector('#status div:last-child').className = 'ok';
 
-  if(iconMode === 'upload' && uploadedImg){
-    themeColor = dominantColor(uploadedImg);
+  if(iconRasterSource){
+    themeColor = dominantColor(iconRasterSource);
   }
   bgColor = '#FFFFFF';
 
