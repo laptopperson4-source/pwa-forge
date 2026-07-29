@@ -1,0 +1,116 @@
+name: Build TWA APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_host:
+        description: 'Bare host of the site, e.g. example.com'
+        required: true
+      manifest_url:
+        description: 'Full URL to the PWA manifest.json'
+        required: true
+      icon_url:
+        description: 'Full URL to a >=512x512 PNG icon'
+        required: true
+      app_name:
+        description: 'App display name'
+        required: true
+      package_id:
+        description: 'Android package id, e.g. app.pwaforge.abc123 (no hyphens)'
+        required: true
+      theme_color:
+        description: 'Theme color hex, e.g. #0B0B0B'
+        required: false
+        default: '#0B0B0B'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Write twa-manifest.json
+        run: |
+          mkdir -p ${{ github.workspace }}/project
+          cat > ${{ github.workspace }}/project/twa-manifest.json << EOF
+          {
+            "packageId": "${{ inputs.package_id }}",
+            "host": "${{ inputs.site_host }}",
+            "name": "${{ inputs.app_name }}",
+            "launcherName": "${{ inputs.app_name }}",
+            "display": "standalone",
+            "themeColor": "${{ inputs.theme_color }}",
+            "themeColorDark": "${{ inputs.theme_color }}",
+            "navigationColor": "${{ inputs.theme_color }}",
+            "navigationColorDark": "${{ inputs.theme_color }}",
+            "backgroundColor": "#FFFFFF",
+            "enableNotifications": false,
+            "startUrl": "/",
+            "iconUrl": "${{ inputs.icon_url }}",
+            "maskableIconUrl": "${{ inputs.icon_url }}",
+            "splashScreenFadeOutDuration": 300,
+            "signingKey": { "path": "/project/release.keystore", "alias": "pwaforge" },
+            "appVersion": "1.0.0",
+            "appVersionCode": 1,
+            "webManifestUrl": "${{ inputs.manifest_url }}"
+          }
+          EOF
+
+      # Note on the flags/overrides below - each fixes a specific thing that
+      # silently broke automation during testing:
+      #  --entrypoint=/bin/bash : the image's default entrypoint is
+      #    `bubblewrap` itself, so a bare command gets passed to it as an
+      #    invalid subcommand instead of running as a shell command.
+      #  BUBBLEWRAP_KEYSTORE_PASSWORD / BUBBLEWRAP_KEY_PASSWORD : documented
+      #    env vars that let `build` skip its interactive password prompt.
+      #  `yes |` : auto-answers two prompts that otherwise hang forever in
+      #    CI - the Android SDK Build-Tools license, and a "regenerate
+      #    project?" confirmation.
+      - name: Generate keystore and build signed APK
+        run: |
+          set +e
+          docker run --rm \
+            --entrypoint=/bin/bash \
+            -v ${{ github.workspace }}/project:/project \
+            -w /project \
+            -e BUBBLEWRAP_KEYSTORE_PASSWORD=${{ github.run_id }} \
+            -e BUBBLEWRAP_KEY_PASSWORD=${{ github.run_id }} \
+            ghcr.io/googlechromelabs/bubblewrap:latest \
+            -c '
+              keytool -genkeypair -v -keystore /project/release.keystore -alias pwaforge \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -storepass "$BUBBLEWRAP_KEYSTORE_PASSWORD" -keypass "$BUBBLEWRAP_KEY_PASSWORD" \
+                -dname "CN=PWA Forge,OU=NexaPulse,O=NexaPulse,L=Lagos,S=Lagos,C=NG" &&
+              yes | bubblewrap build --skipPwaValidation
+            ' > ${{ github.workspace }}/project/build-output.txt 2>&1
+          echo "EXIT_CODE=$?" >> ${{ github.workspace }}/project/build-output.txt
+
+      - name: Publish build log for debugging (readable via raw.githubusercontent.com)
+        if: always()
+        run: |
+          set +e
+          tail -c 100000 ${{ github.workspace }}/project/build-output.txt > ${{ github.workspace }}/project/build-output-tail.txt
+          B64=$(base64 -w0 ${{ github.workspace }}/project/build-output-tail.txt)
+          printf '{"message":"build log for run %s","content":"%s"}' "${{ github.run_id }}" "$B64" > /tmp/payload.json
+          curl -sS -X PUT \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/logs/build-${{ github.run_id }}.txt" \
+            --data-binary @/tmp/payload.json > /dev/null
+
+      - name: Locate and rename output artifact
+        run: |
+          cd ${{ github.workspace }}/project
+          APK_PATH=$(find . -name "*-signed.apk" | head -1)
+          if [ -z "$APK_PATH" ]; then APK_PATH=$(find . -name "*.apk" | head -1); fi
+          if [ -z "$APK_PATH" ]; then echo "No APK produced - check logs/build-${{ github.run_id }}.txt in this repo."; exit 1; fi
+          cp "$APK_PATH" "app.apk"
+
+      - name: Create GitHub Release with the APK attached
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_id }}
+          name: "${{ inputs.app_name }} APK"
+          files: ${{ github.workspace }}/project/app.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
