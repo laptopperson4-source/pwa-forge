@@ -245,7 +245,7 @@
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
       PWA Forge
-      <span class="build-tag">build 16 · Android APK</span>
+      <span class="build-tag">build 17 · Offline + fixes</span>
     </div>
     <h1>Site link in. <em>Installable app</em> out.</h1>
     <p class="sub">Give it a URL and an icon. It forges the manifest, service worker, and every icon size — then hands you a zip ready to deploy.</p>
@@ -255,6 +255,7 @@
     <div class="step-head"><span class="step-num">1</span><span class="step-title">Site link</span></div>
     <input type="url" id="siteUrl" placeholder="yoursite.com" value="https://" autocomplete="off">
     <div class="err" id="urlErr">Enter a valid URL, starting with https://</div>
+    <input type="text" id="appNameOverride" placeholder="App name (optional — auto-detected from the link if left blank)" style="margin-top:10px;">
   </div>
 
   <div class="step">
@@ -323,6 +324,7 @@
 const DEPLOY_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/deploy';
 const ICON_SVG_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/generate-icon';
 const APK_BASE = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev';
+const APK_SIGNING_FINGERPRINT = '7A:78:45:56:E7:11:47:A9:2E:D4:32:F0:68:32:C5:EC:8E:9B:98:D1:51:B6:91:B5:A0:F4:EF:96:6F:8C:D1:70';
 
 // ---------- state ----------
 let iconMode = 'upload';
@@ -685,11 +687,11 @@ async function generateIconFromPrompt(prompt){
     if(!res.ok || !data.svg) throw new Error(data.error || 'no svg returned');
     generatedSVG = data.svg;
     generatedIconSpec = null;
-    return true;
+    return { ok: true };
   }catch(err){
     generatedSVG = null;
     generatedIconSpec = parseDescription(prompt);
-    return false;
+    return { ok: false, reason: err.message || String(err) };
   }
 }
 
@@ -699,10 +701,10 @@ genBtn.addEventListener('click', async () => {
   if(!prompt) return;
   genBtn.disabled = true;
   genBtn.textContent = 'Generating…';
-  const ok = await generateIconFromPrompt(prompt);
+  const result = await generateIconFromPrompt(prompt);
   updatePreview();
   genBtn.disabled = false;
-  genBtn.textContent = ok ? 'Regenerate icon' : 'Offline fallback used — tap to retry';
+  genBtn.textContent = result.ok ? 'Regenerate icon' : ('Fallback used (' + result.reason.slice(0,60) + ') — tap to retry');
 });
 
 function drawUploadedToCanvas(canvas, img, size){
@@ -870,7 +872,10 @@ document.getElementById('forgeBtn').onclick = async () => {
   statusEl.innerHTML = '';
   document.getElementById('result').classList.remove('show');
 
-  const {name, short} = nameFromUrl(urlVal);
+  const derived = nameFromUrl(urlVal);
+  const overrideName = document.getElementById('appNameOverride').value.trim();
+  const name = overrideName || derived.name;
+  const short = overrideName ? (overrideName.length > 12 ? overrideName.split(' ')[0] : overrideName) : derived.short;
   let themeColor, bgColor;
 
   log('Reading site link…', 'now');
@@ -882,8 +887,8 @@ document.getElementById('forgeBtn').onclick = async () => {
   let groqRasterImg = null;
   if(iconMode === 'describe'){
     if(!generatedSVG && !generatedIconSpec){
-      const ok = await generateIconFromPrompt(document.getElementById('iconDesc').value.trim());
-      if(!ok) log('Using built-in shapes — the icon AI was unavailable.', '');
+      const result = await generateIconFromPrompt(document.getElementById('iconDesc').value.trim());
+      if(!result.ok) log('Using built-in shapes — icon AI unavailable: ' + result.reason, '');
     }
     if(generatedSVG){
       // Rasterize once at a high source resolution so every output size
@@ -965,14 +970,41 @@ document.getElementById('forgeBtn').onclick = async () => {
   log('Registering service worker…', 'now');
   await tick();
   const sw = `const CACHE = '${short.toLowerCase().replace(/\\s+/g,'-')}-shell-v1';
-self.addEventListener('install', e => { self.skipWaiting(); });
+self.addEventListener('install', e => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['offline.html','icons/icon-192.png'])).catch(()=>{}));
+});
 self.addEventListener('activate', e => { self.clients.claim(); });
 self.addEventListener('fetch', e => {
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
-  );
+  if(e.request.mode === 'navigate'){
+    e.respondWith(fetch(e.request).catch(() => caches.match('offline.html')));
+    return;
+  }
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
 });`;
   zip.file('sw.js', sw);
+  document.querySelector('#status div:last-child').className = 'ok';
+
+  log('Writing offline page…', 'now');
+  await tick();
+  const offlineHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(name)}</title>
+<style>
+  html,body{margin:0;height:100%;background:${themeColor};display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:${contrastColor(themeColor)};text-align:center;padding:24px;box-sizing:border-box;}
+  img{width:88px;height:88px;border-radius:20px;margin-bottom:20px;box-shadow:0 6px 24px rgba(0,0,0,0.25);}
+  h1{font-size:19px;margin:0;font-weight:600;}
+</style>
+</head>
+<body>
+<img src="icons/icon-192.png" alt="">
+<h1>Oops, you're offline</h1>
+</body>
+</html>`;
+  zip.file('offline.html', offlineHtml);
   document.querySelector('#status div:last-child').className = 'ok';
 
   log('Assembling app shell…', 'now');
@@ -1006,6 +1038,13 @@ self.addEventListener('fetch', e => {
   body.standalone #bar, body.standalone #iosHint{display:none;}
   body.standalone #frame{height:100%;}
   #fallback{position:fixed;left:0;right:0;bottom:0;text-align:center;font-size:11.5px;padding:6px;background:rgba(0,0,0,0.04);}
+  #offlineOverlay{
+    position:absolute;top:46px;left:0;right:0;bottom:0;background:${themeColor};color:${fgColor};
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box;
+  }
+  body.standalone #offlineOverlay{top:0;}
+  #offlineOverlay img{width:80px;height:80px;border-radius:18px;margin-bottom:18px;}
+  #offlineOverlay h2{font-size:18px;margin:0;font-weight:600;}
   #fallback a{color:${themeColor};}
 </style>
 </head>
@@ -1017,6 +1056,10 @@ self.addEventListener('fetch', e => {
 </div>
 <div id="iosHint" class="hidden">Tap Share ↑ then "Add to Home Screen" to install</div>
 <iframe id="frame" src="${escapeHtml(urlVal)}" title="${escapeHtml(name)}"></iframe>
+<div id="offlineOverlay" class="hidden">
+  <img src="icons/icon-192.png" alt="">
+  <h2>Oops, you're offline</h2>
+</div>
 <div id="fallback">If the app looks blank, <a href="${escapeHtml(urlVal)}" target="_blank" rel="noopener">open it directly</a></div>
 
 <script>
@@ -1027,6 +1070,14 @@ self.addEventListener('fetch', e => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function(){});
   }
+
+  var offlineOverlay = document.getElementById('offlineOverlay');
+  function updateOnlineState(){
+    offlineOverlay.classList.toggle('hidden', navigator.onLine);
+  }
+  window.addEventListener('online', updateOnlineState);
+  window.addEventListener('offline', updateOnlineState);
+  updateOnlineState();
 
   function isStandalone(){
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -1103,15 +1154,23 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
   if(DEPLOY_ENDPOINT){
     log('Publishing your app…', 'now');
     try{
+      projectName = short.toLowerCase().replace(/\s+/g,'-') + '-' + Math.random().toString(36).slice(2,7);
+      const packageSuffix = projectName.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40) || 'app';
+      const packageId = 'app.pwaforge.' + (/^[0-9]/.test(packageSuffix) ? 'a'+packageSuffix : packageSuffix);
+      const assetLinks = [{
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: { namespace: 'android_app', package_name: packageId, sha256_cert_fingerprints: [APK_SIGNING_FINGERPRINT] }
+      }];
       const filesForDeploy = {
         'index.html': await blobToBase64(new Blob([indexHtml], {type:'text/html'})),
         'manifest.json': await blobToBase64(new Blob([JSON.stringify(manifest, null, 2)], {type:'application/json'})),
-        'sw.js': await blobToBase64(new Blob([sw], {type:'application/javascript'}))
+        'sw.js': await blobToBase64(new Blob([sw], {type:'application/javascript'})),
+        'offline.html': await blobToBase64(new Blob([offlineHtml], {type:'text/html'})),
+        '.well-known/assetlinks.json': await blobToBase64(new Blob([JSON.stringify(assetLinks, null, 2)], {type:'application/json'}))
       };
       for(const path in iconBlobs){
         filesForDeploy[path] = await blobToBase64(iconBlobs[path]);
       }
-      projectName = short.toLowerCase().replace(/\s+/g,'-') + '-' + Math.random().toString(36).slice(2,7);
       const res = await fetch(DEPLOY_ENDPOINT, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({projectName, files: filesForDeploy})
