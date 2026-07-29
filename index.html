@@ -219,6 +219,9 @@
     letter-spacing:.03em;text-transform:uppercase;color:var(--ok);
   }
   #result p{color:var(--muted);font-size:13px;margin:0 0 16px;line-height:1.6;}
+  .apk-section{margin-top:16px;padding-top:16px;border-top:1px solid var(--panel-border);}
+  .apk-section p{margin:0 0 10px;}
+  .apk-section .modal-btn{max-width:220px;}
   .dl-btn{
     display:inline-block;background:transparent;border:1px solid var(--ok);color:var(--ok);
     font-family:'JetBrains Mono',monospace;font-size:13px;padding:13px 20px;
@@ -242,7 +245,7 @@
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
       PWA Forge
-      <span class="build-tag">build 15 · AI SVG</span>
+      <span class="build-tag">build 16 · Android APK</span>
     </div>
     <h1>Site link in. <em>Installable app</em> out.</h1>
     <p class="sub">Give it a URL and an icon. It forges the manifest, service worker, and every icon size — then hands you a zip ready to deploy.</p>
@@ -284,6 +287,11 @@
     <p id="resultDetail"></p>
     <a class="dl-btn open-btn hidden-el" id="openLink" target="_blank" rel="noopener">Open your app</a>
     <a class="dl-btn" id="downloadLink" download="pwa.zip">Download zip</a>
+    <div id="apkSection" class="apk-section hidden-el">
+      <p id="apkStatusText">Building an installable Android app in the background — this takes a few minutes.</p>
+      <button type="button" class="modal-btn primary" id="apkCheckBtn">Check for Android app</button>
+      <a class="dl-btn open-btn hidden-el" id="apkDownloadLink" target="_blank" rel="noopener">Download Android app</a>
+    </div>
   </div>
 </div>
 
@@ -314,6 +322,7 @@
 // one-tap live deploys. Leave as-is to fall back to zip download only.
 const DEPLOY_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/deploy';
 const ICON_SVG_ENDPOINT = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev/generate-icon';
+const APK_BASE = 'https://pwa-forge-deploy-worker.laptopperson4.workers.dev';
 
 // ---------- state ----------
 let iconMode = 'upload';
@@ -1090,6 +1099,7 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
 
   // ---------- attempt a live deploy ----------
   let liveUrl = null;
+  let projectName = null;
   if(DEPLOY_ENDPOINT){
     log('Publishing your app…', 'now');
     try{
@@ -1101,7 +1111,7 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
       for(const path in iconBlobs){
         filesForDeploy[path] = await blobToBase64(iconBlobs[path]);
       }
-      const projectName = short.toLowerCase().replace(/\s+/g,'-') + '-' + Math.random().toString(36).slice(2,7);
+      projectName = short.toLowerCase().replace(/\s+/g,'-') + '-' + Math.random().toString(36).slice(2,7);
       const res = await fetch(DEPLOY_ENDPOINT, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({projectName, files: filesForDeploy})
@@ -1133,6 +1143,7 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
     openLink.textContent = 'Open your app';
     openLink.classList.remove('hidden-el');
     resultDetail.textContent = `${name} is live at ${liveUrl.replace(/^https?:\/\//,'')} — open it on your phone and tap Install.`;
+    startApkBuild(projectName, name, liveUrl, themeColor);
   } else {
     openLink.classList.add('hidden-el');
     resultDetail.textContent = `${name} · points to ${urlVal}`;
@@ -1141,6 +1152,64 @@ Upload index.html, manifest.json, sw.js and the icons/ folder to any static file
 
   btn.disabled = false;
 };
+
+let apkRunId = null;
+async function startApkBuild(projectName, appName, liveUrl, themeColor){
+  const section = document.getElementById('apkSection');
+  const statusText = document.getElementById('apkStatusText');
+  const checkBtn = document.getElementById('apkCheckBtn');
+  const dlLink = document.getElementById('apkDownloadLink');
+  section.classList.remove('hidden-el');
+  dlLink.classList.add('hidden-el');
+  checkBtn.classList.remove('hidden-el');
+  statusText.textContent = 'Building an installable Android app in the background — this takes a few minutes.';
+  try{
+    const res = await fetch(APK_BASE + '/build-apk', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        projectName, appName,
+        manifestUrl: liveUrl + '/manifest.json',
+        iconUrl: liveUrl + '/icons/icon-512.png',
+        themeColor
+      })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.runId) throw new Error(data.error || 'could not start APK build');
+    apkRunId = data.runId;
+  }catch(err){
+    statusText.textContent = 'Android app build unavailable right now — the PWA link above still works fully.';
+    checkBtn.classList.add('hidden-el');
+  }
+}
+
+document.getElementById('apkCheckBtn').addEventListener('click', async () => {
+  if(!apkRunId) return;
+  const statusText = document.getElementById('apkStatusText');
+  const checkBtn = document.getElementById('apkCheckBtn');
+  const dlLink = document.getElementById('apkDownloadLink');
+  checkBtn.textContent = 'Checking…';
+  checkBtn.disabled = true;
+  try{
+    const res = await fetch(APK_BASE + '/apk-status/' + apkRunId);
+    const data = await res.json();
+    if(data.status === 'ready'){
+      statusText.textContent = 'Android app is ready.';
+      dlLink.href = data.downloadUrl;
+      dlLink.textContent = 'Download Android app';
+      dlLink.classList.remove('hidden-el');
+      checkBtn.classList.add('hidden-el');
+    } else if(data.status === 'failed'){
+      statusText.textContent = 'Android build hit an error — the PWA link above still works fully.';
+      checkBtn.classList.add('hidden-el');
+    } else {
+      statusText.textContent = 'Still building — give it another minute and check again.';
+    }
+  }catch(err){
+    statusText.textContent = 'Could not check status — try again shortly.';
+  }
+  checkBtn.textContent = 'Check for Android app';
+  checkBtn.disabled = false;
+});
 
 function blobToBase64(blob){
   return new Promise((resolve, reject) => {
