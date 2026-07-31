@@ -245,7 +245,7 @@
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
       PWA Forge
-      <span class="build-tag">build 18 · Offline redesign</span>
+      <span class="build-tag">build 19 · Native polish</span>
     </div>
     <h1>Site link in. <em>Installable app</em> out.</h1>
     <p class="sub">Give it a URL and an icon. It forges the manifest, service worker, and every icon size — then hands you a zip ready to deploy.</p>
@@ -996,14 +996,16 @@ self.addEventListener('fetch', e => {
 <style>
   html,body{margin:0;height:100%;background:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;box-sizing:border-box;}
   .card{background:#fff;border:1px solid #E7E7E7;border-radius:16px;padding:32px 26px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.08);max-width:300px;width:100%;}
+  .card img{width:56px;height:56px;border-radius:14px;margin-bottom:16px;}
   .card p{font-size:16px;color:#1A1A1A;margin:0 0 20px;font-weight:600;}
-  .card button{font:inherit;font-weight:600;font-size:14px;border:none;border-radius:10px;padding:12px 22px;background:${themeColor};color:${contrastColor(themeColor)};cursor:pointer;width:100%;}
+  .card button, .card a.settings-btn{font:inherit;font-weight:600;font-size:14px;border:none;border-radius:10px;padding:12px 22px;background:${themeColor};color:${contrastColor(themeColor)};cursor:pointer;width:100%;display:block;text-decoration:none;box-sizing:border-box;}
 </style>
 </head>
 <body>
 <div class="card">
+  <img src="icons/icon-192.png" alt="">
   <p>No internet connection</p>
-  <button onclick="location.href='intent:#Intent;action=android.settings.WIFI_SETTINGS;end'">Open settings</button>
+  <a class="settings-btn" href="intent://#Intent;action=android.settings.WIFI_SETTINGS;end">Open settings</a>
 </div>
 </body>
 </html>`;
@@ -1040,13 +1042,13 @@ self.addEventListener('fetch', e => {
   #frame{border:0;width:100%;height:calc(100% - 46px);display:block;}
   body.standalone #bar, body.standalone #iosHint{display:none;}
   body.standalone #frame{height:100%;}
-  #fallback{position:fixed;left:0;right:0;bottom:0;text-align:center;font-size:11.5px;padding:6px;background:rgba(0,0,0,0.04);}
   #offlineOverlay{
     position:absolute;top:46px;left:0;right:0;bottom:0;background:#FFFFFF;
     display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;
   }
   body.standalone #offlineOverlay{top:0;}
   #offlineOverlay .card{background:#fff;border:1px solid #E7E7E7;border-radius:16px;padding:32px 26px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.08);max-width:300px;width:100%;}
+  #offlineOverlay .card img{width:56px;height:56px;border-radius:14px;margin-bottom:16px;}
   #offlineOverlay .card p{font-size:16px;color:#1A1A1A;margin:0 0 20px;font-weight:600;}
   #offlineOverlay .card button{font:inherit;font-weight:600;font-size:14px;border:none;border-radius:10px;padding:12px 22px;background:${themeColor};color:${fgColor};cursor:pointer;width:100%;}
   #fallback a{color:${themeColor};}
@@ -1062,11 +1064,11 @@ self.addEventListener('fetch', e => {
 <iframe id="frame" src="${escapeHtml(urlVal)}" title="${escapeHtml(name)}"></iframe>
 <div id="offlineOverlay" class="hidden">
   <div class="card">
+    <img src="icons/icon-192.png" alt="">
     <p>No internet connection</p>
     <button onclick="location.href='intent:#Intent;action=android.settings.WIFI_SETTINGS;end'">Open settings</button>
   </div>
 </div>
-<div id="fallback">If the app looks blank, <a href="${escapeHtml(urlVal)}" target="_blank" rel="noopener">open it directly</a></div>
 
 <script>
   var deferredPrompt = null;
