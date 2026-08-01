@@ -245,7 +245,7 @@
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
       PWA Forge
-      <span class="build-tag">build 19 · Native polish</span>
+      <span class="build-tag">build 20 · Back button</span>
     </div>
     <h1>Site link in. <em>Installable app</em> out.</h1>
     <p class="sub">Give it a URL and an icon. It forges the manifest, service worker, and every icon size — then hands you a zip ready to deploy.</p>
@@ -1086,6 +1086,27 @@ self.addEventListener('fetch', e => {
   window.addEventListener('online', updateOnlineState);
   window.addEventListener('offline', updateOnlineState);
   updateOnlineState();
+
+  // Android back button: by default it's wired to this shell's own history,
+  // which has nothing in it, so the app would just close on the very first
+  // back press even if the site inside the iframe has somewhere to go.
+  // history.back() on a cross-origin iframe's window is one of the few
+  // cross-origin operations browsers still permit (it can't leak any data
+  // back), so we can delegate to it. Bounded to a fixed number of presses
+  // so the app can never get stuck open no matter how deep the site's own
+  // navigation actually goes.
+  var backBudget = 5;
+  var frameEl = document.getElementById('frame');
+  history.pushState({ pwaForgeBack: true }, '', location.href);
+  window.addEventListener('popstate', function(){
+    if (backBudget > 0) {
+      backBudget--;
+      try { frameEl.contentWindow.history.back(); } catch(e){}
+      history.pushState({ pwaForgeBack: true }, '', location.href);
+    }
+    // once the budget runs out we stop re-pushing state, so the next
+    // back press has nothing left to pop and the app exits normally
+  });
 
   function isStandalone(){
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
